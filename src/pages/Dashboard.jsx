@@ -10450,7 +10450,8 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                   : [{
                     channelId: settings.tempVoice?.channelId || '',
                     categoryId: settings.tempVoice?.categoryId || '',
-                    nameTemplate: settings.tempVoice?.nameTemplate || "🔊 {username}'s Room"
+                    nameTemplate: settings.tempVoice?.nameTemplate || "🔊 {username}'s Room",
+                    userLimit: settings.tempVoice?.userLimit !== undefined ? settings.tempVoice.userLimit : 'auto'
                   }];
 
                 const updateTempVoiceChannels = (newChannels) => {
@@ -10459,7 +10460,8 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                     channels: newChannels,
                     channelId: newChannels[0]?.channelId || '',
                     categoryId: newChannels[0]?.categoryId || '',
-                    nameTemplate: newChannels[0]?.nameTemplate || "🔊 {username}'s Room"
+                    nameTemplate: newChannels[0]?.nameTemplate || "🔊 {username}'s Room",
+                    userLimit: newChannels[0]?.userLimit !== undefined ? newChannels[0].userLimit : 'auto'
                   };
                   handleInputChange('tempVoice', updatedTempVoice);
                 };
@@ -10478,14 +10480,14 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                   if (currentChannels.length >= 10) return;
                   const next = [
                     ...currentChannels,
-                    { channelId: '', categoryId: '', nameTemplate: "🔊 {username}'s Room" }
+                    { channelId: '', categoryId: '', nameTemplate: "🔊 {username}'s Room", userLimit: 'auto' }
                   ];
                   updateTempVoiceChannels(next);
                 };
 
                 const handleRemoveChannel = (index) => {
                   if (currentChannels.length <= 1) {
-                    const next = [{ channelId: '', categoryId: '', nameTemplate: "🔊 {username}'s Room" }];
+                    const next = [{ channelId: '', categoryId: '', nameTemplate: "🔊 {username}'s Room", userLimit: 'auto' }];
                     updateTempVoiceChannels(next);
                   } else {
                     const next = currentChannels.filter((_, idx) => idx !== index);
@@ -10500,7 +10502,7 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                         <div>
                           <h3 style={{ fontSize: '1.2rem', fontWeight: '700' }}>Join-to-Create Voice Channels</h3>
                           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                            Configure up to 10 automated temporary voice channel triggers for your server.
+                            Configure up to 10 automated temporary voice channel triggers with customized member limits (e.g. 2-person Duo channels, 3-person Trios, Squads).
                           </p>
                         </div>
                         <label className="switch">
@@ -10539,103 +10541,202 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                           </div>
 
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            {currentChannels.map((chConfig, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                                  borderRadius: '10px',
-                                  padding: '18px',
-                                  position: 'relative'
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                                  <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--primary)', letterSpacing: '0.5px' }}>
-                                    OPTION #{index + 1}
-                                  </span>
-                                  {currentChannels.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveChannel(index)}
-                                      style={{
-                                        background: 'rgba(239, 68, 68, 0.15)',
-                                        color: '#ef4444',
-                                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                                        borderRadius: '6px',
-                                        padding: '4px 10px',
-                                        fontSize: '0.75rem',
-                                        fontWeight: '600',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s'
-                                      }}
-                                    >
-                                      Remove Option
-                                    </button>
-                                  )}
-                                </div>
+                            {currentChannels.map((chConfig, index) => {
+                              const rawLimit = chConfig.userLimit;
+                              const isAuto = rawLimit === undefined || rawLimit === null || rawLimit === '' || rawLimit === 'auto';
+                              const numLimit = isAuto ? null : Number(rawLimit);
+                              const isCustom = !isAuto && ![0, 2, 3, 4, 5].includes(numLimit);
 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '14px' }}>
-                                  {/* Trigger Voice Channel */}
-                                  <div>
-                                    <label style={{ display: 'block', fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                                      Trigger Channel (Join to Create) <span style={{ color: 'var(--danger)' }}>*</span>
-                                    </label>
-                                    <select
-                                      value={chConfig.channelId || ''}
-                                      onChange={(e) => handleChannelChange(index, 'channelId', e.target.value)}
-                                      className="glass-input"
-                                    >
-                                      <option value="">-- Select voice channel --</option>
-                                      {voiceChannels.map(vc => (
-                                        <option key={vc.id} value={vc.id}>🔊 {vc.name}</option>
-                                      ))}
-                                    </select>
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
-                                      Members joining this voice channel will get their own temporary channel.
-                                    </span>
+                              return (
+                                <div
+                                  key={index}
+                                  style={{
+                                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                    borderRadius: '10px',
+                                    padding: '18px',
+                                    position: 'relative'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                      <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--primary)', letterSpacing: '0.5px' }}>
+                                        OPTION #{index + 1}
+                                      </span>
+                                      {numLimit === 2 && (
+                                        <span style={{ fontSize: '0.725rem', background: 'rgba(37, 99, 235, 0.2)', color: '#60a5fa', border: '1px solid rgba(96, 165, 250, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                          👥 2 Persons (Duo)
+                                        </span>
+                                      )}
+                                      {numLimit === 3 && (
+                                        <span style={{ fontSize: '0.725rem', background: 'rgba(168, 85, 247, 0.2)', color: '#c084fc', border: '1px solid rgba(192, 132, 252, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                          👥 3 Persons (Trio)
+                                        </span>
+                                      )}
+                                      {numLimit === 4 && (
+                                        <span style={{ fontSize: '0.725rem', background: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', border: '1px solid rgba(74, 222, 128, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                          👥 4 Persons (Squad)
+                                        </span>
+                                      )}
+                                      {numLimit === 5 && (
+                                        <span style={{ fontSize: '0.725rem', background: 'rgba(234, 179, 8, 0.2)', color: '#facc15', border: '1px solid rgba(250, 204, 21, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                          👥 5 Persons (5-Stack)
+                                        </span>
+                                      )}
+                                      {numLimit === 0 && (
+                                        <span style={{ fontSize: '0.725rem', background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-secondary)', border: '1px solid rgba(255, 255, 255, 0.2)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                          🌐 Unlimited
+                                        </span>
+                                      )}
+                                      {isAuto && (
+                                        <span style={{ fontSize: '0.725rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                          ⚡ Auto Discord Limit
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {currentChannels.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveChannel(index)}
+                                        style={{
+                                          background: 'rgba(239, 68, 68, 0.15)',
+                                          color: '#ef4444',
+                                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                                          borderRadius: '6px',
+                                          padding: '4px 10px',
+                                          fontSize: '0.75rem',
+                                          fontWeight: '600',
+                                          cursor: 'pointer',
+                                          transition: 'all 0.2s'
+                                        }}
+                                      >
+                                        Remove Option
+                                      </button>
+                                    )}
                                   </div>
 
-                                  {/* Target Category */}
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '14px' }}>
+                                    {/* Trigger Voice Channel */}
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                                        Trigger Channel (Join to Create) <span style={{ color: 'var(--danger)' }}>*</span>
+                                      </label>
+                                      <select
+                                        value={chConfig.channelId || ''}
+                                        onChange={(e) => handleChannelChange(index, 'channelId', e.target.value)}
+                                        className="glass-input"
+                                      >
+                                        <option value="">-- Select voice channel --</option>
+                                        {voiceChannels.map(vc => (
+                                          <option key={vc.id} value={vc.id}>
+                                            🔊 {vc.name}{vc.userLimit > 0 ? ` (${vc.userLimit} Persons Limit)` : ''}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                                        Members joining this channel will have a temporary room created for them.
+                                      </span>
+                                    </div>
+
+                                    {/* Target Category */}
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                                        Target Category (Optional)
+                                      </label>
+                                      <select
+                                        value={chConfig.categoryId || ''}
+                                        onChange={(e) => handleChannelChange(index, 'categoryId', e.target.value)}
+                                        className="glass-input"
+                                      >
+                                        <option value="">-- Use same category as trigger channel --</option>
+                                        {categories.map(cat => (
+                                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                        ))}
+                                      </select>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                                        Category where newly created voice channels will be placed.
+                                      </span>
+                                    </div>
+
+                                    {/* Channel Member Limit (Access Capacity) */}
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                                        Member Access Limit (Capacity)
+                                      </label>
+                                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <select
+                                          value={isAuto ? 'auto' : (isCustom ? 'custom' : String(numLimit))}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === 'auto') {
+                                              handleChannelChange(index, 'userLimit', 'auto');
+                                            } else if (val === 'custom') {
+                                              handleChannelChange(index, 'userLimit', 6);
+                                            } else {
+                                              handleChannelChange(index, 'userLimit', parseInt(val, 10));
+                                            }
+                                          }}
+                                          className="glass-input"
+                                          style={{ flex: 1 }}
+                                        >
+                                          <option value="auto">⚡ Auto (Match Trigger Channel Limit)</option>
+                                          <option value="2">👥 2 Persons (Duo Channel)</option>
+                                          <option value="3">👥 3 Persons (Trio Channel)</option>
+                                          <option value="4">👥 4 Persons (Squad Channel)</option>
+                                          <option value="5">👥 5 Persons (5-Stack)</option>
+                                          <option value="0">🌐 Unlimited (No Limit)</option>
+                                          <option value="custom">⚙️ Custom Limit (1-99)...</option>
+                                        </select>
+
+                                        {isCustom && (
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            max="99"
+                                            value={numLimit || 6}
+                                            onChange={(e) => {
+                                              const n = parseInt(e.target.value, 10);
+                                              handleChannelChange(index, 'userLimit', isNaN(n) ? 2 : Math.max(1, Math.min(99, n)));
+                                            }}
+                                            className="glass-input"
+                                            style={{ width: '80px', textAlign: 'center' }}
+                                            placeholder="Limit"
+                                          />
+                                        )}
+                                      </div>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                                        {numLimit === 2
+                                          ? '🔒 Voice channel will be created with exactly 2 member access.'
+                                          : numLimit > 0
+                                            ? `🔒 Voice channel will be created with ${numLimit} member access.`
+                                            : numLimit === 0
+                                              ? '🌐 Voice channel will have unlimited access.'
+                                              : '⚡ Automatically inherits the user limit of the trigger channel from Discord.'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Channel Name Template */}
                                   <div>
                                     <label style={{ display: 'block', fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                                      Target Category (Optional)
+                                      Channel Name Template
                                     </label>
-                                    <select
-                                      value={chConfig.categoryId || ''}
-                                      onChange={(e) => handleChannelChange(index, 'categoryId', e.target.value)}
+                                    <input
+                                      type="text"
+                                      value={chConfig.nameTemplate || ''}
+                                      onChange={(e) => handleChannelChange(index, 'nameTemplate', e.target.value)}
                                       className="glass-input"
-                                    >
-                                      <option value="">-- Use same category as trigger channel --</option>
-                                      {categories.map(cat => (
-                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                      ))}
-                                    </select>
+                                      style={{ maxWidth: '450px' }}
+                                      placeholder="🔊 {username}'s Room"
+                                    />
                                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
-                                      Where newly generated voice rooms will be created.
+                                      Supports placeholders: <code>{`{username}`}</code> (creator name), <code>{`{limit}`}</code> (member limit)
                                     </span>
                                   </div>
                                 </div>
-
-                                {/* Channel Name Template */}
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                                    Channel Name Template
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={chConfig.nameTemplate || ''}
-                                    onChange={(e) => handleChannelChange(index, 'nameTemplate', e.target.value)}
-                                    className="glass-input"
-                                    style={{ maxWidth: '450px' }}
-                                    placeholder="🔊 {username}'s Room"
-                                  />
-                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
-                                    Supports placeholder: <code>{`{username}`}</code>
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
