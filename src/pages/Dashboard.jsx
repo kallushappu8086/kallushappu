@@ -2744,6 +2744,14 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
 
   const formatWelcomeText = (rawText) => {
     if (!rawText) return '';
+    const currentMemberCount = memberCount || 2262;
+    const getOrdinal = (n) => {
+      const num = parseInt(n, 10);
+      if (isNaN(num)) return n || '1st';
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = num % 100;
+      return num + (s[(v - 20) % 10] || s[v] || s[0]);
+    };
 
     const redirectCh = channels.find(c => c.id === settings?.welcome?.redirectChannelId);
     const channelName = redirectCh ? redirectCh.name : 'channel';
@@ -2753,34 +2761,37 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
     const channelName3 = redirectCh3 ? redirectCh3.name : 'channel';
 
     let text = rawText
-      .replace(/{username}/g, user?.username || 'Member')
-      .replace(/{server}/g, guildName || 'Server');
+      .replace(/\{username\}/gi, user?.username || 'Member')
+      .replace(/\{server\}/gi, guildName || 'Server')
+      .replace(/\{membercount_ordinal\}/gi, getOrdinal(currentMemberCount))
+      .replace(/members:\s*\{membercount\}/gi, `${currentMemberCount} members`)
+      .replace(/\{membercount\}/gi, String(currentMemberCount));
 
-    const parts = text.split(/({user}|{channel}|{channel2}|{channel3})/g);
+    const parts = text.split(/(\{user\}|\{channel\}|\{channel2\}|\{channel3\})/gi);
 
     return parts.map((part, index) => {
-      if (part === '{user}') {
+      if (part.toLowerCase() === '{user}') {
         return (
           <span key={`mention-user-${index}`} className="discord-mention">
             @{user?.username || 'Member'}
           </span>
         );
       }
-      if (part === '{channel}') {
+      if (part.toLowerCase() === '{channel}') {
         return (
           <span key={`mention-ch-${index}`} className="discord-mention-channel">
             #{channelName}
           </span>
         );
       }
-      if (part === '{channel2}') {
+      if (part.toLowerCase() === '{channel2}') {
         return (
           <span key={`mention-ch2-${index}`} className="discord-mention-channel">
             #{channelName2}
           </span>
         );
       }
-      if (part === '{channel3}') {
+      if (part.toLowerCase() === '{channel3}') {
         return (
           <span key={`mention-ch3-${index}`} className="discord-mention-channel">
             #{channelName3}
@@ -2803,30 +2814,75 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
   };
 
   const renderRedirectButton = () => {
-    const redirectIds = [
-      settings?.welcome?.redirectChannelId,
-      settings?.welcome?.redirectChannelId2,
-      settings?.welcome?.redirectChannelId3
-    ].filter(Boolean);
+    const rawButtons = Array.isArray(settings?.welcome?.quickButtons) && settings.welcome.quickButtons.length > 0
+      ? settings.welcome.quickButtons
+      : [];
 
-    if (redirectIds.length === 0) return null;
+    let btnsToRender = [];
+    if (rawButtons.length > 0) {
+      btnsToRender = rawButtons.slice(0, 5).map((btn, idx) => {
+        let label = (btn.label || '').trim();
+        if (btn.type === 'channel' && btn.channelId) {
+          const ch = channels.find(c => c.id === btn.channelId);
+          if (!label) label = ch ? ch.name : 'channel';
+        }
+        return {
+          id: btn.id || idx,
+          label: label || 'Link',
+          emoji: btn.emoji || '',
+          url: btn.type === 'channel' && btn.channelId
+            ? `https://discord.com/channels/${guildId}/${btn.channelId}`
+            : (btn.url || '#')
+        };
+      });
+    } else {
+      const redirectIds = [
+        settings?.welcome?.redirectChannelId,
+        settings?.welcome?.redirectChannelId2,
+        settings?.welcome?.redirectChannelId3
+      ].filter(Boolean);
+      btnsToRender = redirectIds.map((id, index) => {
+        const redirectCh = channels.find(c => c.id === id);
+        return {
+          id: id + index,
+          label: redirectCh ? `#${redirectCh.name}` : '#channel',
+          emoji: '',
+          url: `https://discord.com/channels/${guildId}/${id}`
+        };
+      });
+    }
+
+    if (btnsToRender.length === 0) return null;
 
     return (
-      <div className="discord-buttons-row">
-        {redirectIds.map((id, index) => {
-          const redirectCh = channels.find(c => c.id === id);
-          const channelName = redirectCh ? redirectCh.name : 'channel';
-          return (
-            <span key={id + index} className="discord-button-link">
-              <span>#{channelName}</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <line x1="10" y1="14" x2="21" y2="3"></line>
-              </svg>
-            </span>
-          );
-        })}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+        {btnsToRender.map((btn, index) => (
+          <span
+            key={btn.id || index}
+            style={{
+              backgroundColor: '#2b2d31',
+              border: '1px solid rgba(255, 255, 255, 0.07)',
+              borderRadius: '4px',
+              padding: '7px 14px',
+              color: '#ffffff',
+              fontSize: '0.85rem',
+              fontWeight: '600',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)',
+              userSelect: 'none'
+            }}
+          >
+            {btn.emoji && <span style={{ fontSize: '0.95rem' }}>{btn.emoji}</span>}
+            <span style={{ color: '#f2f3f5' }}>{btn.label}</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, marginLeft: '2px' }}>
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+          </span>
+        ))}
       </div>
     );
   };
@@ -5793,78 +5849,290 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                     </div>
 
                     {settings.welcome.enabled && (() => {
+                      const currentMemberCount = memberCount || 2262;
+
+                      const getOrdinal = (n) => {
+                        const num = parseInt(n, 10);
+                        if (isNaN(num)) return n || '1st';
+                        const s = ['th', 'st', 'nd', 'rd'];
+                        const v = num % 100;
+                        return num + (s[(v - 20) % 10] || s[v] || s[0]);
+                      };
+
+                      const ch1 = channels.find(c => c.id === settings.welcome?.redirectChannelId);
+                      const ch2 = channels.find(c => c.id === settings.welcome?.redirectChannelId2);
+                      const ch3 = channels.find(c => c.id === settings.welcome?.redirectChannelId3);
+
+                      // Normalize quickButtons
+                      const quickButtons = Array.isArray(settings.welcome?.quickButtons)
+                        ? settings.welcome.quickButtons
+                        : (settings.welcome?.redirectChannelId || settings.welcome?.websiteUrl)
+                          ? [
+                              ...(settings.welcome?.redirectChannelId ? [{ id: 'btn_1', label: ch1?.name || 'Announcements', emoji: '📢', type: 'channel', channelId: settings.welcome.redirectChannelId, url: '' }] : []),
+                              ...(settings.welcome?.websiteUrl ? [{ id: 'btn_2', label: 'ToS', emoji: '☑️', type: 'url', channelId: '', url: settings.welcome.websiteUrl }] : []),
+                              ...(settings.welcome?.redirectChannelId2 ? [{ id: 'btn_3', label: ch2?.name || 'Support', emoji: '🎫', type: 'channel', channelId: settings.welcome.redirectChannelId2, url: '' }] : []),
+                              ...(settings.welcome?.redirectChannelId3 ? [{ id: 'btn_4', label: ch3?.name || 'Rules', emoji: '📜', type: 'channel', channelId: settings.welcome.redirectChannelId3, url: '' }] : [])
+                            ]
+                          : [
+                              { id: 'btn_1', label: 'Announcements', emoji: '📢', type: 'channel', channelId: '', url: '' },
+                              { id: 'btn_2', label: 'ToS', emoji: '☑️', type: 'url', channelId: '', url: 'https://' },
+                              { id: 'btn_3', label: 'Support', emoji: '🎫', type: 'channel', channelId: '', url: '' }
+                            ];
+
+                      const updateButtons = (newBtns) => {
+                        handleInputChange('welcome.quickButtons', newBtns);
+                        const channelBtns = newBtns.filter(b => b.type === 'channel' && b.channelId);
+                        const urlBtns = newBtns.filter(b => b.type === 'url' && b.url);
+                        handleInputChange('welcome.redirectChannelId', channelBtns[0]?.channelId || '');
+                        handleInputChange('welcome.redirectChannelId2', channelBtns[1]?.channelId || '');
+                        handleInputChange('welcome.redirectChannelId3', channelBtns[2]?.channelId || '');
+                        if (urlBtns[0]?.url) {
+                          handleInputChange('welcome.websiteUrl', urlBtns[0].url);
+                        }
+                      };
+
+                      const handleAddButton = () => {
+                        if (quickButtons.length >= 5) return;
+                        const newBtn = {
+                          id: `btn_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                          label: '',
+                          emoji: '🔗',
+                          type: 'channel',
+                          channelId: '',
+                          url: ''
+                        };
+                        updateButtons([...quickButtons, newBtn]);
+                      };
+
+                      const handleRemoveButton = (idx) => {
+                        const updated = quickButtons.filter((_, i) => i !== idx);
+                        updateButtons(updated);
+                      };
+
+                      const handleMoveButton = (idx, direction) => {
+                        const targetIdx = idx + direction;
+                        if (targetIdx < 0 || targetIdx >= quickButtons.length) return;
+                        const updated = [...quickButtons];
+                        const [moved] = updated.splice(idx, 1);
+                        updated.splice(targetIdx, 0, moved);
+                        updateButtons(updated);
+                      };
+
+                      const handleButtonChange = (idx, field, value) => {
+                        const updated = quickButtons.map((btn, i) => {
+                          if (i !== idx) return btn;
+                          const modified = { ...btn, [field]: value };
+                          if (field === 'channelId' && value) {
+                            const selectedCh = channels.find(c => c.id === value);
+                            if (selectedCh && (!modified.label || modified.label === 'Button' || modified.label === 'channel')) {
+                              modified.label = selectedCh.name;
+                            }
+                          }
+                          return modified;
+                        });
+                        updateButtons(updated);
+                      };
+
+                      const handleLoadScreenshotPreset = () => {
+                        const announceCh = channels.find(c => c.name.toLowerCase().includes('announce')) || channels[0];
+                        const supportCh = channels.find(c => c.name.toLowerCase().includes('support') || c.name.toLowerCase().includes('ticket')) || channels[1] || channels[0];
+
+                        const preset = [
+                          {
+                            id: `btn_announcements_${Date.now()}`,
+                            label: 'Announcements',
+                            emoji: '📢',
+                            type: 'channel',
+                            channelId: announceCh?.id || '',
+                            url: ''
+                          },
+                          {
+                            id: `btn_tos_${Date.now() + 1}`,
+                            label: 'ToS',
+                            emoji: '☑️',
+                            type: 'url',
+                            channelId: '',
+                            url: 'https://discord.com/terms'
+                          },
+                          {
+                            id: `btn_support_${Date.now() + 2}`,
+                            label: 'Support',
+                            emoji: '🎫',
+                            type: 'channel',
+                            channelId: supportCh?.id || '',
+                            url: ''
+                          }
+                        ];
+                        updateButtons(preset);
+                        if (!settings.welcome.embedTitle) {
+                          handleInputChange('welcome.embedTitle', '🏠 Welcome to {server}');
+                        }
+                        if (!settings.welcome.message || settings.welcome.message === 'Welcome {user} to {server}!') {
+                          handleInputChange(
+                            'welcome.message',
+                            'Hey {user}!\n👤 You are our {membercount_ordinal} Member\nJoined {server}!\n\n> Read our ToS\n> Check out our latest Announcements\n> Need help? Open a Support Ticket'
+                          );
+                        }
+                        showNotification('Loaded Screenshot Preset: Announcements, ToS & Support!');
+                      };
+
                       const formatWelcomeText = (text) => {
-                        if (!text) return '';
-                        let str = text;
-                        const username = user?.username ? `@${user.username}` : '@_kallushappu_0007';
-                        const server = guildName || 'KALLU SHAPPU';
+                        if (!text) return null;
 
-                        const ch1 = channels.find(c => c.id === settings.welcome.redirectChannelId);
-                        const ch2 = channels.find(c => c.id === settings.welcome.redirectChannelId2);
-                        const ch3 = channels.find(c => c.id === settings.welcome.redirectChannelId3);
+                        const lines = text.split('\n');
 
-                        str = str.replace(/\{user\}/gi, username);
-                        str = str.replace(/\{username\}/gi, user?.username || '_kallushappu_0007');
-                        str = str.replace(/\{server\}/gi, server);
-                        str = str.replace(/members:\s*\{membercount\}/gi, '');
-                        str = str.replace(/\{membercount\}/gi, '');
-                        str = str.replace(/\{channel\}/gi, ch1 ? `#${ch1.name}` : '#channel');
-                        str = str.replace(/\{channel2\}/gi, ch2 ? `#${ch2.name}` : '#channel2');
-                        str = str.replace(/\{channel3\}/gi, ch3 ? `#${ch3.name}` : '#channel3');
-                        return str;
+                        return lines.map((rawLine, lineIdx) => {
+                          let line = rawLine
+                            .replace(/\{username\}/gi, user?.username || 'Member')
+                            .replace(/\{server\}/gi, guildName || 'Server')
+                            .replace(/\{membercount_ordinal\}/gi, getOrdinal(currentMemberCount))
+                            .replace(/members:\s*\{membercount\}/gi, `${currentMemberCount} members`)
+                            .replace(/\{membercount\}/gi, String(currentMemberCount));
+
+                          const isQuote = line.trim().startsWith('>');
+                          if (isQuote) {
+                            line = line.replace(/^\s*>\s*/, '');
+                          }
+
+                          const parts = line.split(/(\{user\}|\{channel\}|\{channel2\}|\{channel3\})/gi);
+
+                          const parsedElements = parts.map((part, pIdx) => {
+                            if (part.toLowerCase() === '{user}') {
+                              return (
+                                <span key={`user-${pIdx}`} className="discord-mention" style={{ backgroundColor: 'rgba(88, 101, 242, 0.25)', color: '#c9cdfb', padding: '1px 5px', borderRadius: '3px', fontWeight: '500' }}>
+                                  @{user?.username || 'Member'}
+                                </span>
+                              );
+                            }
+                            if (part.toLowerCase() === '{channel}') {
+                              return (
+                                <span key={`ch-${pIdx}`} className="discord-mention-channel" style={{ backgroundColor: 'rgba(88, 101, 242, 0.15)', color: '#c9cdfb', padding: '1px 5px', borderRadius: '3px', fontWeight: '500' }}>
+                                  #{ch1 ? ch1.name : 'channel'}
+                                </span>
+                              );
+                            }
+                            if (part.toLowerCase() === '{channel2}') {
+                              return (
+                                <span key={`ch2-${pIdx}`} className="discord-mention-channel" style={{ backgroundColor: 'rgba(88, 101, 242, 0.15)', color: '#c9cdfb', padding: '1px 5px', borderRadius: '3px', fontWeight: '500' }}>
+                                  #{ch2 ? ch2.name : 'channel2'}
+                                </span>
+                              );
+                            }
+                            if (part.toLowerCase() === '{channel3}') {
+                              return (
+                                <span key={`ch3-${pIdx}`} className="discord-mention-channel" style={{ backgroundColor: 'rgba(88, 101, 242, 0.15)', color: '#c9cdfb', padding: '1px 5px', borderRadius: '3px', fontWeight: '500' }}>
+                                  #{ch3 ? ch3.name : 'channel3'}
+                                </span>
+                              );
+                            }
+
+                            const boldParts = part.split(/(\*\*.*?\*\*)/g);
+                            return boldParts.map((sub, sIdx) => {
+                              if (sub.startsWith('**') && sub.endsWith('**')) {
+                                return <strong key={`b-${sIdx}`} style={{ color: '#ffffff', fontWeight: '700' }}>{sub.slice(2, -2)}</strong>;
+                              }
+                              return sub;
+                            });
+                          });
+
+                          if (isQuote) {
+                            return (
+                              <div
+                                key={`line-${lineIdx}`}
+                                style={{
+                                  borderLeft: '4px solid #4e5058',
+                                  paddingLeft: '10px',
+                                  margin: '3px 0',
+                                  color: '#cdd2d8',
+                                  fontSize: '0.88rem',
+                                  fontStyle: 'italic',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  flexWrap: 'wrap'
+                                }}
+                              >
+                                {parsedElements}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={`line-${lineIdx}`} style={{ minHeight: line.trim() ? 'auto' : '0.7em', marginBottom: '2px' }}>
+                              {parsedElements}
+                            </div>
+                          );
+                        });
                       };
 
                       const renderRedirectButton = () => {
-                        const buttons = [];
-
-                        if (settings.welcome.websiteUrl && settings.welcome.websiteUrl.trim()) {
-                          let siteUrl = settings.welcome.websiteUrl.trim();
-                          if (!siteUrl.startsWith('http://') && !siteUrl.startsWith('https://')) {
-                            siteUrl = `https://${siteUrl}`;
-                          }
-                          buttons.push({
-                            label: '🌐 Website',
-                            url: siteUrl
+                        let btnsToRender = [];
+                        if (quickButtons.length > 0) {
+                          btnsToRender = quickButtons.slice(0, 5).map((btn, idx) => {
+                            let label = (btn.label || '').trim();
+                            if (btn.type === 'channel' && btn.channelId) {
+                              const ch = channels.find(c => c.id === btn.channelId);
+                              if (!label) label = ch ? ch.name : 'channel';
+                            }
+                            return {
+                              id: btn.id || idx,
+                              label: label || 'Link',
+                              emoji: btn.emoji || '',
+                              url: btn.type === 'channel' && btn.channelId
+                                ? `https://discord.com/channels/${guildId}/${btn.channelId}`
+                                : (btn.url || '#')
+                            };
                           });
                         }
 
-                        const redirect1 = channels.find(c => c.id === settings.welcome.redirectChannelId);
-                        const redirect2 = channels.find(c => c.id === settings.welcome.redirectChannelId2);
-                        const redirect3 = channels.find(c => c.id === settings.welcome.redirectChannelId3);
-
-                        if (redirect1) buttons.push({ label: `#${redirect1.name}`, url: '#' });
-                        if (redirect2) buttons.push({ label: `#${redirect2.name}`, url: '#' });
-                        if (redirect3) buttons.push({ label: `#${redirect3.name}`, url: '#' });
-
-                        if (buttons.length === 0) return null;
+                        if (btnsToRender.length === 0) return null;
 
                         return (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-                            {buttons.map((btn, idx) => (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                            {btnsToRender.map((btn, idx) => (
                               <a
-                                key={idx}
+                                key={btn.id || idx}
                                 href={btn.url || '#'}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{
-                                  backgroundColor: '#4e5058',
-                                  color: '#ffffff',
-                                  padding: '6px 14px',
+                                  backgroundColor: '#2b2d31',
+                                  border: '1px solid rgba(255, 255, 255, 0.08)',
                                   borderRadius: '4px',
+                                  padding: '7px 14px',
+                                  color: '#ffffff',
                                   fontSize: '0.85rem',
                                   fontWeight: '600',
                                   textDecoration: 'none',
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '6px',
-                                  transition: 'background-color 0.15s ease'
+                                  gap: '7px',
+                                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)',
+                                  cursor: 'pointer',
+                                  transition: 'background-color 0.15s ease, transform 0.1s ease',
+                                  userSelect: 'none'
                                 }}
+                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#383a40'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#2b2d31'; }}
                                 onClick={(e) => {
                                   if (!btn.url || btn.url === '#') e.preventDefault();
                                 }}
                               >
-                                <span>{btn.label}</span>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                {btn.emoji && (
+                                  <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>{btn.emoji}</span>
+                                )}
+                                <span style={{ color: '#f2f3f5' }}>{btn.label}</span>
+                                <svg
+                                  width="13"
+                                  height="13"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  style={{ opacity: 0.7, marginLeft: '2px' }}
+                                >
                                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                                   <polyline points="15 3 21 3 21 9"></polyline>
                                   <line x1="10" y1="14" x2="21" y2="3"></line>
@@ -5966,6 +6234,59 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                               </div>
                             </div>
 
+                            {/* Embed Header / Title Box */}
+                            <div style={{
+                              backgroundColor: '#0a0c16',
+                              border: '1px solid rgba(255, 255, 255, 0.06)',
+                              borderRadius: '12px',
+                              padding: '16px'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <h4 style={{ fontSize: '0.9rem', fontWeight: '600', color: '#f8fafc', margin: 0 }}>
+                                  Embed Header / Title (Optional)
+                                </h4>
+                              </div>
+                              <input
+                                type="text"
+                                value={settings.welcome.embedTitle || ''}
+                                onChange={(e) => handleInputChange('welcome.embedTitle', e.target.value)}
+                                className="glass-input"
+                                placeholder="🏠 Welcome to Cheat X or 🏠 Welcome to {server}"
+                                style={{
+                                  backgroundColor: '#07080e',
+                                  borderColor: 'rgba(255, 255, 255, 0.08)',
+                                  borderRadius: '8px',
+                                  color: '#ffffff',
+                                  padding: '10px 14px',
+                                  fontSize: '0.88rem',
+                                  width: '100%'
+                                }}
+                              />
+                              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Quick shortcuts:</span>
+                                {['🏠 Welcome to {server}', '{server}', '{username}', '{user}'].map(tag => (
+                                  <button
+                                    key={tag}
+                                    type="button"
+                                    onClick={() => {
+                                      handleInputChange('welcome.embedTitle', tag);
+                                    }}
+                                    style={{
+                                      background: 'rgba(59, 130, 246, 0.1)',
+                                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                                      color: '#60a5fa',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.75rem',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    {tag}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
                             {/* Custom Welcome Message Box */}
                             <div style={{
                               backgroundColor: '#0a0c16',
@@ -5980,25 +6301,26 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                                 value={settings.welcome.message || ''}
                                 onChange={(e) => handleInputChange('welcome.message', e.target.value)}
                                 className="glass-input"
-                                placeholder="Welcome {user} to {server}!"
-                                rows="3"
+                                placeholder={"Hey {user}!\n👤 You are our {membercount_ordinal} Member\nJoined {server}!\n\n> Read our ToS\n> Check out our latest Announcements\n> Need help? Open a Support Ticket"}
+                                rows="5"
                                 style={{
                                   backgroundColor: '#07080e',
                                   borderColor: 'rgba(255, 255, 255, 0.08)',
                                   borderRadius: '8px',
                                   color: '#ffffff',
-                                  minHeight: '85px',
+                                  minHeight: '110px',
                                   resize: 'vertical',
                                   fontFamily: 'inherit',
                                   fontSize: '0.9rem',
-                                  padding: '10px 14px'
+                                  padding: '10px 14px',
+                                  lineHeight: '1.4'
                                 }}
                               />
 
                               {/* Supported tags chips */}
                               <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Supported tags:</span>
-                                {['{user}', '{username}', '{server}', '{channel}', '{channel2}', '{channel3}'].map((tag) => (
+                                {['{user}', '{username}', '{server}', '{membercount}', '{membercount_ordinal}', '{channel}', '{channel2}', '{channel3}'].map((tag) => (
                                   <button
                                     key={tag}
                                     type="button"
@@ -6174,92 +6496,388 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                               </div>
                             </div>
 
-                            {/* Server Website URL Box */}
-                            <div style={{
-                              backgroundColor: '#0a0c16',
-                              border: '1px solid rgba(255, 255, 255, 0.06)',
-                              borderRadius: '12px',
-                              padding: '16px'
-                            }}>
-                              <h4 style={{ fontSize: '0.9rem', fontWeight: '600', color: '#f8fafc', marginBottom: '12px' }}>
-                                Server Website URL (Optional)
-                              </h4>
-                              <input
-                                type="text"
-                                value={settings.welcome.websiteUrl || ''}
-                                onChange={(e) => handleInputChange('welcome.websiteUrl', e.target.value)}
-                                className="glass-input"
-                                placeholder="https://yourwebsite.com"
-                                style={{
-                                  backgroundColor: '#07080e',
-                                  borderColor: 'rgba(255, 255, 255, 0.08)',
-                                  borderRadius: '8px',
-                                  color: '#ffffff',
-                                  padding: '10px 14px',
-                                  fontSize: '0.88rem'
-                                }}
-                              />
-                              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '6px 0 0 0' }}>
-                                Add your server's website link. An interactive "🌐 Website" button will be included in the welcome message.
-                              </p>
-                            </div>
-
                             {/* Channel Quick-Link Buttons (Action Row) Box */}
                             <div style={{
                               backgroundColor: '#0a0c16',
-                              border: '1px solid rgba(255, 255, 255, 0.06)',
+                              border: '1px solid rgba(255, 255, 255, 0.08)',
                               borderRadius: '12px',
-                              padding: '16px'
+                              padding: '18px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '14px'
                             }}>
-                              <h4 style={{ fontSize: '0.9rem', fontWeight: '600', color: '#f8fafc', marginBottom: '12px' }}>
-                                Channel Quick-Link Buttons (Action Row)
-                              </h4>
-
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                 <div>
-                                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#64748b', marginBottom: '6px' }}>Button Link 1</label>
-                                  <select
-                                    value={settings.welcome.redirectChannelId || ''}
-                                    onChange={(e) => handleInputChange('welcome.redirectChannelId', e.target.value)}
-                                    className="glass-input"
-                                    style={{ backgroundColor: '#07080e', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '8px', padding: '9px 12px', fontSize: '0.85rem' }}
-                                  >
-                                    <option value="">-- No Button --</option>
-                                    {channels.map(ch => (
-                                      <option key={ch.id} value={ch.id}>#{ch.name}</option>
-                                    ))}
-                                  </select>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h4 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#f8fafc', margin: 0 }}>
+                                      Channel Quick-Link Buttons (Action Row)
+                                    </h4>
+                                    <span style={{
+                                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                      color: '#60a5fa',
+                                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                                      borderRadius: '12px',
+                                      padding: '2px 8px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: '700'
+                                    }}>
+                                      {quickButtons.length}/5 Buttons
+                                    </span>
+                                  </div>
+                                  <p style={{ fontSize: '0.78rem', color: '#94a3b8', margin: '4px 0 0 0' }}>
+                                    Add up to 5 interactive buttons to your welcome message with custom emojis, labels, and channel or web targets.
+                                  </p>
                                 </div>
 
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#64748b', marginBottom: '6px' }}>Button Link 2</label>
-                                  <select
-                                    value={settings.welcome.redirectChannelId2 || ''}
-                                    onChange={(e) => handleInputChange('welcome.redirectChannelId2', e.target.value)}
-                                    className="glass-input"
-                                    style={{ backgroundColor: '#07080e', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '8px', padding: '9px 12px', fontSize: '0.85rem' }}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={handleLoadScreenshotPreset}
+                                    title="Load Announcements, ToS & Support preset like screenshot"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      backgroundColor: 'rgba(168, 85, 247, 0.15)',
+                                      border: '1px solid rgba(168, 85, 247, 0.35)',
+                                      color: '#c084fc',
+                                      padding: '6px 12px',
+                                      borderRadius: '6px',
+                                      fontSize: '0.78rem',
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
                                   >
-                                    <option value="">-- No Button --</option>
-                                    {channels.map(ch => (
-                                      <option key={ch.id} value={ch.id}>#{ch.name}</option>
-                                    ))}
-                                  </select>
+                                    <Sparkles size={13} />
+                                    <span>Load Screenshot Preset</span>
+                                  </button>
+
+                                  {quickButtons.length < 5 && (
+                                    <button
+                                      type="button"
+                                      onClick={handleAddButton}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                        border: '1px solid rgba(59, 130, 246, 0.35)',
+                                        color: '#60a5fa',
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      <Plus size={14} />
+                                      <span>Add Button</span>
+                                    </button>
+                                  )}
                                 </div>
                               </div>
 
-                              <div style={{ width: 'calc(50% - 7px)' }}>
-                                <label style={{ display: 'block', fontSize: '0.78rem', color: '#64748b', marginBottom: '6px' }}>Button Link 3</label>
-                                <select
-                                  value={settings.welcome.redirectChannelId3 || ''}
-                                  onChange={(e) => handleInputChange('welcome.redirectChannelId3', e.target.value)}
-                                  className="glass-input"
-                                  style={{ backgroundColor: '#07080e', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '8px', padding: '9px 12px', fontSize: '0.85rem' }}
-                                >
-                                  <option value="">-- No Button --</option>
-                                  {channels.map(ch => (
-                                    <option key={ch.id} value={ch.id}>#{ch.name}</option>
-                                  ))}
-                                </select>
+                              {/* Button Cards List */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {quickButtons.map((btn, idx) => (
+                                  <div
+                                    key={btn.id || idx}
+                                    style={{
+                                      backgroundColor: '#07080e',
+                                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                                      borderRadius: '10px',
+                                      padding: '14px',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '12px'
+                                    }}
+                                  >
+                                    {/* Button Card Header */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{
+                                          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                                          color: '#f8fafc',
+                                          fontSize: '0.75rem',
+                                          fontWeight: '700',
+                                          padding: '2px 8px',
+                                          borderRadius: '4px'
+                                        }}>
+                                          Button #{idx + 1}
+                                        </span>
+                                        <span style={{
+                                          backgroundColor: '#2b2d31',
+                                          color: '#ffffff',
+                                          padding: '2px 8px',
+                                          borderRadius: '4px',
+                                          fontSize: '0.75rem',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          opacity: 0.9
+                                        }}>
+                                          <span>{btn.emoji || '🔗'}</span>
+                                          <span>{btn.label || 'Link'}</span>
+                                          <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>↗</span>
+                                        </span>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        {idx > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleMoveButton(idx, -1)}
+                                            title="Move button left/up"
+                                            style={{
+                                              background: 'none',
+                                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                                              borderRadius: '4px',
+                                              color: '#94a3b8',
+                                              padding: '4px 6px',
+                                              cursor: 'pointer',
+                                              fontSize: '0.75rem',
+                                              lineHeight: 1
+                                            }}
+                                          >
+                                            ▲
+                                          </button>
+                                        )}
+                                        {idx < quickButtons.length - 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleMoveButton(idx, 1)}
+                                            title="Move button right/down"
+                                            style={{
+                                              background: 'none',
+                                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                                              borderRadius: '4px',
+                                              color: '#94a3b8',
+                                              padding: '4px 6px',
+                                              cursor: 'pointer',
+                                              fontSize: '0.75rem',
+                                              lineHeight: 1
+                                            }}
+                                          >
+                                            ▼
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveButton(idx)}
+                                          title="Remove this button"
+                                          style={{
+                                            background: 'rgba(239, 68, 68, 0.12)',
+                                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                                            borderRadius: '4px',
+                                            color: '#f87171',
+                                            padding: '4px 8px',
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            fontSize: '0.75rem'
+                                          }}
+                                        >
+                                          <Trash2 size={12} />
+                                          <span>Remove</span>
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Row 1: Emoji & Label */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 180px) 1fr', gap: '12px' }}>
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px', fontWeight: '500' }}>
+                                          Button Emoji
+                                        </label>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                          <input
+                                            type="text"
+                                            value={btn.emoji || ''}
+                                            onChange={(e) => handleButtonChange(idx, 'emoji', e.target.value)}
+                                            placeholder="📢"
+                                            className="glass-input"
+                                            style={{
+                                              backgroundColor: '#0c0e17',
+                                              borderColor: 'rgba(255,255,255,0.08)',
+                                              borderRadius: '6px',
+                                              padding: '8px 10px',
+                                              fontSize: '1rem',
+                                              textAlign: 'center',
+                                              width: '50px',
+                                              flexShrink: 0
+                                            }}
+                                          />
+                                          {/* Quick emoji chips */}
+                                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                            {['📢', '☑️', '🎫', '📜', '💬'].map(em => (
+                                              <button
+                                                key={em}
+                                                type="button"
+                                                onClick={() => handleButtonChange(idx, 'emoji', em)}
+                                                style={{
+                                                  background: btn.emoji === em ? 'rgba(59, 130, 246, 0.3)' : 'rgba(255, 255, 255, 0.05)',
+                                                  border: btn.emoji === em ? '1px solid #3b82f6' : '1px solid rgba(255, 255, 255, 0.1)',
+                                                  borderRadius: '4px',
+                                                  padding: '4px 6px',
+                                                  fontSize: '0.85rem',
+                                                  cursor: 'pointer',
+                                                  lineHeight: 1
+                                                }}
+                                              >
+                                                {em}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px', fontWeight: '500' }}>
+                                          Button Label
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={btn.label || ''}
+                                          onChange={(e) => handleButtonChange(idx, 'label', e.target.value)}
+                                          placeholder="e.g. Announcements, ToS, Support"
+                                          className="glass-input"
+                                          style={{
+                                            backgroundColor: '#0c0e17',
+                                            borderColor: 'rgba(255,255,255,0.08)',
+                                            borderRadius: '6px',
+                                            padding: '8px 12px',
+                                            fontSize: '0.85rem',
+                                            color: '#ffffff',
+                                            width: '100%'
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Row 2: Destination Type Switcher & Target Field */}
+                                    <div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                        <label style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: '500' }}>
+                                          Destination Target
+                                        </label>
+                                        <div style={{ display: 'flex', gap: '4px', backgroundColor: '#0c0e17', padding: '2px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleButtonChange(idx, 'type', 'channel')}
+                                            style={{
+                                              background: btn.type !== 'url' ? '#2563eb' : 'transparent',
+                                              color: '#ffffff',
+                                              border: 'none',
+                                              borderRadius: '4px',
+                                              padding: '3px 8px',
+                                              fontSize: '0.72rem',
+                                              fontWeight: '600',
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '4px'
+                                            }}
+                                          >
+                                            <Hash size={11} />
+                                            <span>Discord Channel</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleButtonChange(idx, 'type', 'url')}
+                                            style={{
+                                              background: btn.type === 'url' ? '#2563eb' : 'transparent',
+                                              color: '#ffffff',
+                                              border: 'none',
+                                              borderRadius: '4px',
+                                              padding: '3px 8px',
+                                              fontSize: '0.72rem',
+                                              fontWeight: '600',
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '4px'
+                                            }}
+                                          >
+                                            <LinkIcon size={11} />
+                                            <span>External URL</span>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {btn.type !== 'url' ? (
+                                        <div>
+                                          <select
+                                            value={btn.channelId || ''}
+                                            onChange={(e) => handleButtonChange(idx, 'channelId', e.target.value)}
+                                            className="glass-input"
+                                            style={{
+                                              backgroundColor: '#0c0e17',
+                                              borderColor: 'rgba(255,255,255,0.08)',
+                                              borderRadius: '6px',
+                                              padding: '8px 12px',
+                                              fontSize: '0.85rem',
+                                              color: '#ffffff',
+                                              width: '100%'
+                                            }}
+                                          >
+                                            <option value="">-- Select Channel --</option>
+                                            {channels.map(ch => (
+                                              <option key={ch.id} value={ch.id}>#{ch.name}</option>
+                                            ))}
+                                          </select>
+                                          <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 0 0' }}>
+                                            Opens #{channels.find(c => c.id === btn.channelId)?.name || 'channel'} directly in Discord when clicked.
+                                          </p>
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <input
+                                            type="text"
+                                            value={btn.url || ''}
+                                            onChange={(e) => handleButtonChange(idx, 'url', e.target.value)}
+                                            placeholder="https://example.com/tos or https://discord.gg/..."
+                                            className="glass-input"
+                                            style={{
+                                              backgroundColor: '#0c0e17',
+                                              borderColor: 'rgba(255,255,255,0.08)',
+                                              borderRadius: '6px',
+                                              padding: '8px 12px',
+                                              fontSize: '0.85rem',
+                                              color: '#ffffff',
+                                              width: '100%'
+                                            }}
+                                          />
+                                          <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 0 0' }}>
+                                            Opens this web URL in user's browser when clicked.
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {quickButtons.length === 0 && (
+                                  <div style={{
+                                    padding: '24px',
+                                    textAlign: 'center',
+                                    border: '1px dashed rgba(255, 255, 255, 0.1)',
+                                    borderRadius: '8px',
+                                    color: '#64748b'
+                                  }}>
+                                    <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem' }}>No Action Row buttons configured yet.</p>
+                                    <button
+                                      type="button"
+                                      onClick={handleLoadScreenshotPreset}
+                                      className="btn-primary"
+                                      style={{ padding: '6px 14px', fontSize: '0.8rem' }}
+                                    >
+                                      Load Announcements, ToS & Support Preset
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -6361,12 +6979,15 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start' }}>
                                       <div style={{ flex: 1 }}>
                                         {settings.welcome.embedTitle && settings.welcome.embedTitle.trim() ? (
-                                          <div style={{ color: '#ffffff', fontWeight: '700', fontSize: '1.1rem', marginBottom: '6px' }}>
-                                            {formatWelcomeText(settings.welcome.embedTitle)}
+                                          <div style={{ color: '#ffffff', fontWeight: '700', fontSize: '1.15rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {settings.welcome.embedTitle
+                                              .replace(/\{server\}/gi, guildName || 'Server')
+                                              .replace(/\{user\}/gi, user?.username || 'Member')
+                                              .replace(/\{username\}/gi, user?.username || 'Member')}
                                           </div>
                                         ) : null}
 
-                                        <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: '1.4' }}>
+                                        <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: '1.45' }}>
                                           {formatWelcomeText(settings.welcome.message || 'Welcome {user} to {server}!')}
                                         </div>
                                       </div>
