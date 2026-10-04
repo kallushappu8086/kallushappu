@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "http://3.104.66.174:25568/api/:path*"
+      "destination": "http://63.182.216.234:25565/api/:path*"
     },
     {
       "source": "/uploads/:path*",
-      "destination": "http://3.104.66.174:25568/uploads/:path*"
+      "destination": "http://63.182.216.234:25565/uploads/:path*"
     },
     {
       "source": "/socket.io/:path*",
-      "destination": "http://3.104.66.174:25568/socket.io/:path*"
+      "destination": "http://63.182.216.234:25565/socket.io/:path*"
     },
     {
       "source": "/(.*)",
