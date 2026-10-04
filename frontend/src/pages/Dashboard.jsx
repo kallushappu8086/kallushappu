@@ -2791,8 +2791,19 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
     return url;
   };
 
+  const getOrdinal = (n) => {
+    const num = parseInt(n, 10);
+    if (isNaN(num)) return `${n}th`;
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = num % 100;
+    return num + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+
   const formatWelcomeText = (rawText) => {
     if (!rawText) return '';
+
+    const count = memberCount || 11;
+    const ordinal = getOrdinal(count);
 
     const redirectCh = channels.find(c => c.id === settings?.welcome?.redirectChannelId);
     const channelName = redirectCh ? redirectCh.name : 'channel';
@@ -2803,7 +2814,15 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
 
     let text = rawText
       .replace(/{username}/g, user?.username || 'Member')
-      .replace(/{server}/g, guildName || 'Server');
+      .replace(/{server}/g, guildName || 'Server')
+      .replace(/{member_ordinal}/gi, ordinal)
+      .replace(/{memberordinal}/gi, ordinal)
+      .replace(/{ordinal}/gi, ordinal)
+      .replace(/{member_count}/gi, String(count))
+      .replace(/{membercount}/gi, String(count))
+      .replace(/{count}/gi, String(count))
+      .replace(/{member_number}/gi, `#${count}`)
+      .replace(/{membernumber}/gi, `#${count}`);
 
     const parts = text.split(/({user}|{channel}|{channel2}|{channel3})/g);
 
@@ -2882,6 +2901,8 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
 
   const renderCanvasCard = () => {
     if (!settings || !settings.welcome) return null;
+    const cardCount = memberCount || 11;
+    const cardOrdinal = getOrdinal(cardCount);
     return (
       <div className="glass-panel" style={{
         width: '100%',
@@ -2981,7 +3002,17 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
               margin: 0,
               pointerEvents: 'none'
             }}>
-              {(settings.welcome.titleText || 'WELCOME').replace(/{server}/g, guildName).replace(/{username}/g, (user.username || 'Member').toUpperCase())}
+              {(settings.welcome.titleText || 'WELCOME')
+                .replace(/{server}/g, guildName)
+                .replace(/{username}/g, (user.username || 'Member').toUpperCase())
+                .replace(/{member_ordinal}/gi, cardOrdinal)
+                .replace(/{memberordinal}/gi, cardOrdinal)
+                .replace(/{ordinal}/gi, cardOrdinal)
+                .replace(/{member_count}/gi, String(cardCount))
+                .replace(/{membercount}/gi, String(cardCount))
+                .replace(/{count}/gi, String(cardCount))
+                .replace(/{member_number}/gi, `#${cardCount}`)
+                .replace(/{membernumber}/gi, `#${cardCount}`)}
             </h2>
           </div>
         )}
@@ -3051,7 +3082,17 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
               margin: 0,
               pointerEvents: 'none'
             }}>
-              {(settings.welcome.subtextText || 'TO {server}').replace(/{server}/g, guildName).replace(/{username}/g, (user.username || 'Member').toUpperCase())}
+              {(settings.welcome.subtextText || 'TO {server}')
+                .replace(/{server}/g, guildName)
+                .replace(/{username}/g, (user.username || 'Member').toUpperCase())
+                .replace(/{member_ordinal}/gi, cardOrdinal)
+                .replace(/{memberordinal}/gi, cardOrdinal)
+                .replace(/{ordinal}/gi, cardOrdinal)
+                .replace(/{member_count}/gi, String(cardCount))
+                .replace(/{membercount}/gi, String(cardCount))
+                .replace(/{count}/gi, String(cardCount))
+                .replace(/{member_number}/gi, `#${cardCount}`)
+                .replace(/{membernumber}/gi, `#${cardCount}`)}
             </p>
           </div>
         )}
@@ -5842,6 +5883,9 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                     </div>
 
                     {settings.welcome.enabled && (() => {
+                      const count = memberCount || 11;
+                      const ordinal = getOrdinal(count);
+
                       const formatWelcomeText = (text) => {
                         if (!text) return '';
                         let str = text;
@@ -5855,8 +5899,14 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                         str = str.replace(/\{user\}/gi, username);
                         str = str.replace(/\{username\}/gi, user?.username || '_kallushappu_0007');
                         str = str.replace(/\{server\}/gi, server);
-                        str = str.replace(/members:\s*\{membercount\}/gi, '');
-                        str = str.replace(/\{membercount\}/gi, '');
+                        str = str.replace(/\{member_ordinal\}/gi, ordinal);
+                        str = str.replace(/\{memberordinal\}/gi, ordinal);
+                        str = str.replace(/\{ordinal\}/gi, ordinal);
+                        str = str.replace(/\{member_count\}/gi, String(count));
+                        str = str.replace(/\{membercount\}/gi, String(count));
+                        str = str.replace(/\{count\}/gi, String(count));
+                        str = str.replace(/\{member_number\}/gi, `#${count}`);
+                        str = str.replace(/\{membernumber\}/gi, `#${count}`);
                         str = str.replace(/\{channel\}/gi, ch1 ? `#${ch1.name}` : '#channel');
                         str = str.replace(/\{channel2\}/gi, ch2 ? `#${ch2.name}` : '#channel2');
                         str = str.replace(/\{channel3\}/gi, ch3 ? `#${ch3.name}` : '#channel3');
@@ -6047,7 +6097,7 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                               {/* Supported tags chips */}
                               <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Supported tags:</span>
-                                {['{user}', '{username}', '{server}', '{channel}', '{channel2}', '{channel3}'].map((tag) => (
+                                {['{user}', '{username}', '{server}', '{channel}', '{channel2}', '{channel3}', '{member_ordinal}', '{member_count}', '{member_number}'].map((tag) => (
                                   <button
                                     key={tag}
                                     type="button"
@@ -6071,6 +6121,211 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                                   </button>
                                 ))}
                               </div>
+                            </div>
+
+                            {/* Member Join Position / Count (Ethramathe Member) Option Box */}
+                            <div style={{
+                              backgroundColor: '#0a0c16',
+                              border: '1px solid rgba(255, 255, 255, 0.06)',
+                              borderRadius: '12px',
+                              padding: '16px'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: settings.welcome.showMemberCount ? '14px' : '0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#38bdf8'
+                                  }}>
+                                    <Award size={18} />
+                                  </div>
+                                  <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <h4 style={{ fontSize: '0.9rem', fontWeight: '600', color: '#f8fafc', margin: 0 }}>
+                                        Member Join Position / Count
+                                      </h4>
+                                      <span style={{
+                                        fontSize: '0.65rem',
+                                        fontWeight: '700',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                                        color: '#38bdf8',
+                                        letterSpacing: '0.04em'
+                                      }}>
+                                        JOIN ORDER
+                                      </span>
+                                    </div>
+                                    <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '4px 0 0 0' }}>
+                                      Display what number member they are when joining (e.g. "You are the 11th member to the server!").
+                                    </p>
+                                  </div>
+                                </div>
+                                <label className="switch" style={{ scale: '0.85', flexShrink: 0 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(settings.welcome.showMemberCount)}
+                                    onChange={() => handleToggle('welcome.showMemberCount')}
+                                  />
+                                  <span className="slider"></span>
+                                </label>
+                              </div>
+
+                              {settings.welcome.showMemberCount && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '14px' }}>
+                                  {/* Placement Selector */}
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px', fontWeight: '500' }}>
+                                      Display Placement
+                                    </label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
+                                      {[
+                                        { id: 'message', label: 'Append to Message', desc: 'Adds note to welcome message' },
+                                        { id: 'footer', label: 'Embed Footer', desc: 'Displays in embed footer' },
+                                        { id: 'custom', label: 'Custom Tag Only', desc: 'Use {member_ordinal} anywhere' }
+                                      ].map(opt => {
+                                        const isSelected = (settings.welcome.memberCountPlacement || 'message') === opt.id;
+                                        return (
+                                          <button
+                                            key={opt.id}
+                                            type="button"
+                                            onClick={() => handleInputChange('welcome.memberCountPlacement', opt.id)}
+                                            style={{
+                                              padding: '8px 10px',
+                                              backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.12)' : '#07080e',
+                                              border: isSelected ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
+                                              borderRadius: '8px',
+                                              color: isSelected ? '#38bdf8' : '#94a3b8',
+                                              fontSize: '0.8rem',
+                                              fontWeight: isSelected ? '600' : '500',
+                                              cursor: 'pointer',
+                                              textAlign: 'left',
+                                              transition: 'all 0.15s ease'
+                                            }}
+                                          >
+                                            <div>{opt.label}</div>
+                                            <div style={{ fontSize: '0.7rem', color: isSelected ? '#7dd3fc' : '#64748b', marginTop: '2px' }}>{opt.desc}</div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  {/* Quick Format Presets */}
+                                  <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                      <label style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: '500' }}>
+                                        Quick Format Presets
+                                      </label>
+                                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Click to apply</span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                      {[
+                                        { label: '🏆 Ordinal (11th)', text: 'You are the {member_ordinal} member to the server!' },
+                                        { label: '🔢 Numbered (#11)', text: 'Member #{member_count}' },
+                                        { label: '🎉 Welcome + Ordinal', text: 'Welcome to {server}! You are our {member_ordinal} member!' }
+                                      ].map((preset, pIdx) => (
+                                        <button
+                                          key={pIdx}
+                                          type="button"
+                                          onClick={() => handleInputChange('welcome.memberCountFormat', preset.text)}
+                                          style={{
+                                            backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                                            color: '#cbd5e1',
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.75rem',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                          }}
+                                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#38bdf8'; e.currentTarget.style.color = '#38bdf8'; }}
+                                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'; e.currentTarget.style.color = '#cbd5e1'; }}
+                                        >
+                                          {preset.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Format Template Input */}
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '6px', fontWeight: '500' }}>
+                                      Join Position Message Format
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={settings.welcome.memberCountFormat !== undefined ? settings.welcome.memberCountFormat : 'You are the {member_ordinal} member to the server!'}
+                                      onChange={(e) => handleInputChange('welcome.memberCountFormat', e.target.value)}
+                                      className="glass-input"
+                                      placeholder="You are the {member_ordinal} member to the server!"
+                                      style={{
+                                        backgroundColor: '#07080e',
+                                        borderColor: 'rgba(255, 255, 255, 0.08)',
+                                        borderRadius: '8px',
+                                        color: '#ffffff',
+                                        padding: '10px 14px',
+                                        fontSize: '0.88rem',
+                                        width: '100%'
+                                      }}
+                                    />
+
+                                    {/* Supported Tags for Join Position */}
+                                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Insert tags:</span>
+                                      {[
+                                        { tag: '{member_ordinal}', desc: '11th' },
+                                        { tag: '{member_count}', desc: '11' },
+                                        { tag: '{member_number}', desc: '#11' },
+                                        { tag: '{server}', desc: 'Server' }
+                                      ].map(item => (
+                                        <button
+                                          key={item.tag}
+                                          type="button"
+                                          onClick={() => {
+                                            const current = settings.welcome.memberCountFormat !== undefined ? settings.welcome.memberCountFormat : 'You are the {member_ordinal} member to the server!';
+                                            handleInputChange('welcome.memberCountFormat', current + (current ? ' ' : '') + item.tag);
+                                          }}
+                                          style={{
+                                            background: 'rgba(56, 189, 248, 0.1)',
+                                            border: '1px solid rgba(56, 189, 248, 0.25)',
+                                            color: '#38bdf8',
+                                            padding: '2px 8px',
+                                            borderRadius: '5px',
+                                            fontSize: '0.74rem',
+                                            fontFamily: 'monospace',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          {item.tag} <span style={{ opacity: 0.6, fontSize: '0.68rem' }}>({item.desc})</span>
+                                        </button>
+                                      ))}
+                                    </div>
+
+                                    {/* Live Evaluation Preview */}
+                                    <div style={{
+                                      marginTop: '10px',
+                                      padding: '8px 12px',
+                                      backgroundColor: 'rgba(56, 189, 248, 0.06)',
+                                      border: '1px dashed rgba(56, 189, 248, 0.25)',
+                                      borderRadius: '6px',
+                                      fontSize: '0.78rem',
+                                      color: '#bae6fd',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px'
+                                    }}>
+                                      <span style={{ fontWeight: '700', color: '#38bdf8' }}>✨ Live Preview:</span>
+                                      <span>{formatWelcomeText(settings.welcome.memberCountFormat || 'You are the {member_ordinal} member to the server!')}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             {/* Welcome Banner Image / GIF Link Box */}
@@ -6418,6 +6673,24 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                                         <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: '1.4' }}>
                                           {formatWelcomeText(settings.welcome.message || 'Welcome {user} to {server}!')}
                                         </div>
+                                        {settings.welcome.showMemberCount && (settings.welcome.memberCountPlacement || 'message') === 'message' && !(/\{member_ordinal\}|\{memberordinal\}|\{ordinal\}|\{member_count\}|\{membercount\}|\{member_number\}|\{membernumber\}/i.test(settings.welcome.message || '')) && (
+                                          <div style={{
+                                            marginTop: '8px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                                            border: '1px solid rgba(56, 189, 248, 0.25)',
+                                            borderRadius: '6px',
+                                            padding: '4px 10px',
+                                            color: '#38bdf8',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500'
+                                          }}>
+                                            <span>🎉</span>
+                                            <span>{formatWelcomeText(settings.welcome.memberCountFormat || 'You are the {member_ordinal} member to the server!')}</span>
+                                          </div>
+                                        )}
                                       </div>
 
                                       {/* Thumbnail with ALT badge */}
@@ -6485,6 +6758,36 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                                         <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.08)', margin: '4px 0 2px 0' }} />
                                         {renderRedirectButton()}
                                       </>
+                                    )}
+
+                                    {/* Embed Footer with Member Join Position Preview */}
+                                    {(settings.welcome.embedFooterText || (settings.welcome.showMemberCount && settings.welcome.memberCountPlacement === 'footer')) && (
+                                      <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        marginTop: '6px',
+                                        paddingTop: '6px',
+                                        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                                        fontSize: '0.75rem',
+                                        color: '#949ba4'
+                                      }}>
+                                        {settings.welcome.embedFooterIcon && (
+                                          <img
+                                            src={resolveUploadUrl(settings.welcome.embedFooterIcon)}
+                                            alt="footer icon"
+                                            style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover' }}
+                                          />
+                                        )}
+                                        <span>
+                                          {[
+                                            settings.welcome.embedFooterText ? formatWelcomeText(settings.welcome.embedFooterText) : null,
+                                            (settings.welcome.showMemberCount && settings.welcome.memberCountPlacement === 'footer')
+                                              ? formatWelcomeText(settings.welcome.memberCountFormat || 'You are the {member_ordinal} member to the server!')
+                                              : null
+                                          ].filter(Boolean).join(' • ')}
+                                        </span>
+                                      </div>
                                     )}
 
                                   </div>
