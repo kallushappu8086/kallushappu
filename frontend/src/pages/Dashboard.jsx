@@ -793,6 +793,11 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
   const [actionWhitelistSearchedMembers, setActionWhitelistSearchedMembers] = useState([]);
   const [actionWhitelistSearchLoading, setActionWhitelistSearchLoading] = useState(false);
 
+  // Temp Voice Whitelist state
+  const [tempVoiceSearchQuery, setTempVoiceSearchQuery] = useState('');
+  const [tempVoiceSearchedMembers, setTempVoiceSearchedMembers] = useState([]);
+  const [tempVoiceSearchLoading, setTempVoiceSearchLoading] = useState(false);
+
   const [logs, setLogs] = useState([]);
   const [logFilterCategory, setLogFilterCategory] = useState('ALL');
   const [logSearchQuery, setLogSearchQuery] = useState('');
@@ -2012,6 +2017,31 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
             { id: 'opt_5', label: 'Kottayam', emoji: '🌴', description: 'Find people in Kottayam', roleId: '' }
           ];
         }
+
+        // Normalize Temp Voice configuration
+        if (!sData.tempVoice) {
+          sData.tempVoice = {
+            enabled: false,
+            channelId: '',
+            categoryId: '',
+            nameTemplate: "🔊 {username}'s Room",
+            userLimit: 0,
+            autoDisconnectOverLimit: true,
+            whitelistedUsers: [],
+            whitelistedRoles: [],
+            channels: []
+          };
+        } else {
+          if (sData.tempVoice.autoDisconnectOverLimit === undefined) {
+            sData.tempVoice.autoDisconnectOverLimit = true;
+          }
+          if (!Array.isArray(sData.tempVoice.whitelistedUsers)) {
+            sData.tempVoice.whitelistedUsers = [];
+          }
+          if (!Array.isArray(sData.tempVoice.whitelistedRoles)) {
+            sData.tempVoice.whitelistedRoles = [];
+          }
+        }
       }
 
       setSettings(sData);
@@ -2046,9 +2076,9 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
     loadData(true);
   }, [guildId]);
 
-  // Load members list whenever antinuke, moderation, or full moderation tab becomes active
+  // Load members list whenever antinuke, moderation, full moderation, or temp voice tab becomes active
   useEffect(() => {
-    if (activeTab === 'antinuke' || activeTab === 'moderation' || activeTab === 'fullmoderation') {
+    if (activeTab === 'antinuke' || activeTab === 'moderation' || activeTab === 'fullmoderation' || activeTab === 'tempvoice') {
       const fetchMembers = async () => {
         try {
           const mData = await api.getAdminMembers(guildId).catch(() => []);
@@ -2198,6 +2228,28 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
 
     return () => clearTimeout(delayDebounceFn);
   }, [actionWhitelistSearchQuery, guildId]);
+
+  // Debounce search effect for Temp Voice whitelisting members
+  useEffect(() => {
+    if (!tempVoiceSearchQuery.trim()) {
+      setTempVoiceSearchedMembers([]);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      setTempVoiceSearchLoading(true);
+      try {
+        const membersList = await api.getAdminMembers(guildId, tempVoiceSearchQuery);
+        setTempVoiceSearchedMembers(membersList || []);
+      } catch (err) {
+        console.error('[Dashboard Temp Voice Member Search Error]', err);
+      } finally {
+        setTempVoiceSearchLoading(false);
+      }
+    }, 450);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [tempVoiceSearchQuery, guildId]);
 
   // Initialize Socket.IO connection and join room
   useEffect(() => {
@@ -2619,6 +2671,78 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
         alert('Please enter a valid Discord User ID (17-20 digits) or search/select a member.');
       }
     }
+  };
+
+  const handleAddTempVoiceUserWhitelist = (userId, details = null) => {
+    if (!settings) return;
+    const currentUsers = settings.tempVoice?.whitelistedUsers || [];
+    if (!currentUsers.some(u => (typeof u === 'string' ? u === userId : u.userId === userId))) {
+      const addedBy = user ? user.username : 'Dashboard';
+      const username = details ? details.username : '';
+      const displayName = details ? details.displayName : '';
+      const avatar = details ? details.avatar : '';
+      const updatedUsers = [...currentUsers, { userId, addedBy, username, displayName, avatar, addedAt: new Date() }];
+      handleInputChange('tempVoice.whitelistedUsers', updatedUsers);
+    }
+  };
+
+  const handleRemoveTempVoiceUserWhitelist = (userId) => {
+    if (!settings) return;
+    const currentUsers = settings.tempVoice?.whitelistedUsers || [];
+    const updatedUsers = currentUsers.filter(u => (typeof u === 'string' ? u !== userId : u.userId !== userId));
+    handleInputChange('tempVoice.whitelistedUsers', updatedUsers);
+  };
+
+  const handleManualAddTempVoiceUserWhitelist = async () => {
+    const query = tempVoiceSearchQuery.trim();
+    if (!query) return;
+
+    const isId = /^\d{17,20}$/.test(query);
+    if (isId) {
+      let details = null;
+      try {
+        details = await api.getAdminMemberDetails(guildId, query);
+        if (details) {
+          setAllMembers(prev => {
+            if (!prev.some(m => m.id === query)) return [...prev, details];
+            return prev;
+          });
+        }
+      } catch (err) {
+        console.warn(`[Dashboard] Member details not found for ID ${query}:`, err);
+      }
+      handleAddTempVoiceUserWhitelist(query, details);
+      setTempVoiceSearchQuery('');
+      setTempVoiceSearchedMembers([]);
+    } else {
+      if (tempVoiceSearchedMembers.length > 0) {
+        const firstMatch = tempVoiceSearchedMembers.find(m => !(settings.tempVoice?.whitelistedUsers || []).some(u => (typeof u === 'string' ? u === m.id : u.userId === m.id)));
+        if (firstMatch) {
+          handleAddTempVoiceUserWhitelist(firstMatch.id, firstMatch);
+          setTempVoiceSearchQuery('');
+          setTempVoiceSearchedMembers([]);
+        }
+      } else {
+        alert('Please enter a valid Discord User ID (17-20 digits) or search/select a member.');
+      }
+    }
+  };
+
+  const handleToggleTempVoiceRoleWhitelist = (roleId) => {
+    if (!settings) return;
+    const currentRoles = settings.tempVoice?.whitelistedRoles || [];
+    let updatedRoles;
+    const exists = currentRoles.some(r => (typeof r === 'string' ? r === roleId : (r.roleId === roleId || r.id === roleId)));
+    if (exists) {
+      updatedRoles = currentRoles.filter(r => (typeof r === 'string' ? r !== roleId : (r.roleId !== roleId && r.id !== roleId)));
+    } else {
+      const roleObj = roles.find(r => r.id === roleId);
+      updatedRoles = [
+        ...currentRoles,
+        roleObj ? { roleId: roleObj.id, name: roleObj.name, color: roleObj.color ? `#${roleObj.color.toString(16).padStart(6, '0')}` : '' } : roleId
+      ];
+    }
+    handleInputChange('tempVoice.whitelistedRoles', updatedRoles);
   };
 
   const handleManualAddWhitelist = async () => {
@@ -11906,6 +12030,315 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                                 </div>
                               );
                             })}
+                          </div>
+
+                          {/* Fast Over-Limit Disconnect Enforcement Card */}
+                          <div style={{
+                            marginTop: '12px',
+                            padding: '20px',
+                            backgroundColor: 'rgba(239, 68, 68, 0.04)',
+                            border: '1px solid rgba(239, 68, 68, 0.18)',
+                            borderRadius: '12px'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#f87171' }}>
+                                    ⚡ Fast Over-Limit Disconnect
+                                  </span>
+                                  <span style={{ fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                    HIGH SPEED ENFORCEMENT
+                                  </span>
+                                </div>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0, maxWidth: '850px' }}>
+                                  Instantly disconnect anyone (including Discord Administrators or members bypassing limits) who connects to a temporary voice channel after its maximum member limit is reached, unless they are whitelisted below.
+                                </p>
+                              </div>
+                              <label className="switch">
+                                <input
+                                  type="checkbox"
+                                  checked={settings.tempVoice?.autoDisconnectOverLimit ?? true}
+                                  onChange={() => handleToggle('tempVoice.autoDisconnectOverLimit')}
+                                />
+                                <span className="slider"></span>
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Limit Bypass Whitelist Section */}
+                          <div style={{
+                            marginTop: '8px',
+                            padding: '24px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '20px'
+                          }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                  🛡️ Temp Voice Limit Bypass Whitelist
+                                </span>
+                                <span style={{ fontSize: '0.725rem', background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                  ACCESS EXEMPTIONS
+                                </span>
+                              </div>
+                              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+                                Whitelisted roles and members are permitted to join temporary voice channels even after the member limit is full without being disconnected.
+                              </p>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                              {/* Whitelisted Roles Column */}
+                              <div style={{
+                                backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                                border: '1px solid rgba(255, 255, 255, 0.06)',
+                                borderRadius: '10px',
+                                padding: '16px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '12px'
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                    Whitelisted Roles
+                                  </span>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    {(settings.tempVoice?.whitelistedRoles || []).length} active
+                                  </span>
+                                </div>
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                                  Members with any of these roles can bypass temp VC capacity limits without getting kicked.
+                                </p>
+
+                                {/* Roles Checkbox List */}
+                                <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '8px', padding: '10px', backgroundColor: 'rgba(0, 0, 0, 0.2)' }}>
+                                  {roles.filter(r => r.name !== '@everyone').length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '12px' }}>
+                                      No roles available.
+                                    </div>
+                                  ) : (
+                                    roles.filter(r => r.name !== '@everyone').map(role => {
+                                      const isChecked = (settings.tempVoice?.whitelistedRoles || []).some(r => (typeof r === 'string' ? r === role.id : (r.roleId === role.id || r.id === role.id)));
+                                      return (
+                                        <label
+                                          key={role.id}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                            padding: '6px 8px',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                                            transition: 'background 0.15s'
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={() => handleToggleTempVoiceRoleWhitelist(role.id)}
+                                          />
+                                          <span style={{
+                                            color: role.color ? `#${role.color.toString(16).padStart(6, '0')}` : '#ffffff',
+                                            fontWeight: isChecked ? '600' : '400',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                          }}>
+                                            @{role.name}
+                                          </span>
+                                        </label>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Whitelisted Members Column */}
+                              <div style={{
+                                backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                                border: '1px solid rgba(255, 255, 255, 0.06)',
+                                borderRadius: '10px',
+                                padding: '16px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '12px'
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                    Whitelisted Members
+                                  </span>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    {(settings.tempVoice?.whitelistedUsers || []).length} active
+                                  </span>
+                                </div>
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                                  Specific users exempt from temp VC capacity kicks. Search by username or paste Discord ID.
+                                </p>
+
+                                {/* Member Search Input & Add */}
+                                <div style={{ display: 'flex', gap: '8px', position: 'relative' }}>
+                                  <input
+                                    type="text"
+                                    value={tempVoiceSearchQuery}
+                                    onChange={(e) => setTempVoiceSearchQuery(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleManualAddTempVoiceUserWhitelist();
+                                      }
+                                    }}
+                                    placeholder="Search username or paste 18-digit ID..."
+                                    className="glass-input"
+                                    style={{ flex: 1, fontSize: '0.85rem' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handleManualAddTempVoiceUserWhitelist}
+                                    className="btn-primary"
+                                    style={{ padding: '6px 14px', fontSize: '0.825rem', whiteSpace: 'nowrap' }}
+                                  >
+                                    Add
+                                  </button>
+
+                                  {/* Autocomplete Dropdown */}
+                                  {tempVoiceSearchQuery.trim() && (
+                                    <div style={{
+                                      position: 'absolute',
+                                      top: '100%',
+                                      left: 0,
+                                      right: 0,
+                                      marginTop: '4px',
+                                      background: '#1e1f29',
+                                      border: '1px solid var(--border-color)',
+                                      borderRadius: '8px',
+                                      maxHeight: '180px',
+                                      overflowY: 'auto',
+                                      zIndex: 100,
+                                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
+                                    }}>
+                                      {tempVoiceSearchLoading ? (
+                                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                          Searching members...
+                                        </div>
+                                      ) : tempVoiceSearchedMembers.length === 0 ? (
+                                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                          No members found. Press Add to whitelist by ID.
+                                        </div>
+                                      ) : (
+                                        tempVoiceSearchedMembers
+                                          .filter(m => !(settings.tempVoice?.whitelistedUsers || []).some(u => (typeof u === 'string' ? u === m.id : u.userId === m.id)))
+                                          .map(m => (
+                                            <div
+                                              key={m.id}
+                                              onClick={() => {
+                                                handleAddTempVoiceUserWhitelist(m.id, m);
+                                                setTempVoiceSearchQuery('');
+                                                setTempVoiceSearchedMembers([]);
+                                              }}
+                                              style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '10px',
+                                                padding: '8px 12px',
+                                                cursor: 'pointer',
+                                                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                                transition: 'background 0.15s'
+                                              }}
+                                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+                                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                            >
+                                              <img
+                                                src={m.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}
+                                                style={{ width: '24px', height: '24px', borderRadius: '50%' }}
+                                                alt="avatar"
+                                              />
+                                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span style={{ fontSize: '0.85rem', color: '#ffffff', fontWeight: '500' }}>
+                                                  {m.displayName || m.username}
+                                                </span>
+                                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                                  @{m.username} ({m.id})
+                                                </span>
+                                              </div>
+                                            </div>
+                                          ))
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Currently Whitelisted Users Badges */}
+                                <div style={{
+                                  minHeight: '80px',
+                                  maxHeight: '160px',
+                                  overflowY: 'auto',
+                                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                                  borderRadius: '8px',
+                                  padding: '8px',
+                                  backgroundColor: 'rgba(0, 0, 0, 0.2)'
+                                }}>
+                                  {(!settings.tempVoice?.whitelistedUsers || settings.tempVoice.whitelistedUsers.length === 0) ? (
+                                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                      No members specifically whitelisted yet.
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                      {settings.tempVoice.whitelistedUsers.map(u => {
+                                        const uId = typeof u === 'string' ? u : u.userId;
+                                        const uName = typeof u === 'string' ? u : (u.displayName || u.username || u.userId);
+                                        const uAvatar = typeof u === 'object' && u.avatar ? u.avatar : 'https://cdn.discordapp.com/embed/avatars/0.png';
+
+                                        return (
+                                          <div
+                                            key={uId}
+                                            style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'space-between',
+                                              padding: '6px 10px',
+                                              background: 'rgba(0,0,0,0.3)',
+                                              border: '1px solid rgba(255,255,255,0.06)',
+                                              borderRadius: '6px'
+                                            }}
+                                          >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                              <img src={uAvatar} style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }} alt="avatar" />
+                                              <span style={{ fontSize: '0.8rem', color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {uName}
+                                              </span>
+                                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                ({uId})
+                                              </span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveTempVoiceUserWhitelist(uId)}
+                                              style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: '#f87171',
+                                                cursor: 'pointer',
+                                                padding: '2px 6px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 'bold'
+                                              }}
+                                              title="Remove from whitelist"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}
