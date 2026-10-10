@@ -52,7 +52,8 @@ import {
   Camera,
   Copy,
   Code,
-  Layers
+  Layers,
+  ShieldCheck
 } from 'lucide-react';
 
 const Youtube = ({ size = 24, className = '', style = {} }) => (
@@ -785,6 +786,9 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
   const [modWhitelistSearchQuery, setModWhitelistSearchQuery] = useState('');
   const [modWhitelistSearchedMembers, setModWhitelistSearchedMembers] = useState([]);
   const [modWhitelistSearchLoading, setModWhitelistSearchLoading] = useState(false);
+  const [modWhitelistActiveSubtab, setModWhitelistActiveSubtab] = useState('users'); // 'users' | 'roles' | 'channels'
+  const [modRoleSearchQuery, setModRoleSearchQuery] = useState('');
+  const [modChannelSearchQuery, setModChannelSearchQuery] = useState('');
 
   // Full Moderation Whitelist state
   const [fullModSearchQuery, setFullModSearchQuery] = useState('');
@@ -2216,12 +2220,25 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
         }
 
         if (sData.moderation) {
-          if (!sData.moderation.whitelistedUsers) {
+          if (!sData.moderation.fullWhitelist) {
+            sData.moderation.fullWhitelist = { enabled: true };
+          }
+          if (!Array.isArray(sData.moderation.whitelistedUsers)) {
             sData.moderation.whitelistedUsers = [];
           } else {
             sData.moderation.whitelistedUsers = sData.moderation.whitelistedUsers.map(u =>
-              typeof u === 'string' ? { userId: u, addedBy: 'System', username: '', displayName: '', avatar: '' } : u
+              typeof u === 'string' ? { userId: u, addedBy: 'System', username: '', displayName: '', avatar: '', addedAt: new Date() } : u
             );
+          }
+          if (!Array.isArray(sData.moderation.whitelistedRoles)) {
+            sData.moderation.whitelistedRoles = [];
+          } else {
+            sData.moderation.whitelistedRoles = sData.moderation.whitelistedRoles.map(r =>
+              typeof r === 'string' ? { roleId: r, name: '', color: '' } : r
+            );
+          }
+          if (!Array.isArray(sData.moderation.whitelistedChannels)) {
+            sData.moderation.whitelistedChannels = [];
           }
           if (!sData.moderation.wordFilter) {
             sData.moderation.wordFilter = {
@@ -2244,6 +2261,10 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
             spam: { enabled: false, protectedChannels: [], maxMessages: 5, timeWindow: 5000, timeoutDuration: 5 },
             links: { enabled: false, protectedChannels: [], allowedLinks: [] },
             photoSpam: { enabled: false, maxPhotos: 3, timeWindow: 10000, timeoutDuration: 10, whitelistedChannels: [] },
+            fullWhitelist: { enabled: true },
+            whitelistedUsers: [],
+            whitelistedRoles: [],
+            whitelistedChannels: [],
             wordFilter: {
               enabled: false,
               autoDelete: true,
@@ -2257,8 +2278,7 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
               strictBypassProtection: true,
               whitelistedUsers: [],
               whitelistedRoles: []
-            },
-            whitelistedUsers: []
+            }
           };
         }
 
@@ -2769,12 +2789,12 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
   const handleAddModWhitelist = (userId, details = null) => {
     if (!settings || !settings.moderation) return;
     const currentList = settings.moderation.whitelistedUsers || [];
-    if (!currentList.some(u => u.userId === userId)) {
+    if (!currentList.some(u => (typeof u === 'string' ? u : u.userId) === userId)) {
       const addedBy = user ? user.username : 'Dashboard';
       const username = details ? details.username : '';
       const displayName = details ? details.displayName : '';
       const avatar = details ? details.avatar : '';
-      const updatedList = [...currentList, { userId, addedBy, username, displayName, avatar }];
+      const updatedList = [...currentList, { userId, addedBy, username, displayName, avatar, addedAt: new Date() }];
       handleInputChange('moderation.whitelistedUsers', updatedList);
     }
   };
@@ -2782,8 +2802,59 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
   const handleRemoveModWhitelist = (userId) => {
     if (!settings || !settings.moderation) return;
     const currentList = settings.moderation.whitelistedUsers || [];
-    const updatedList = currentList.filter(u => u.userId !== userId);
+    const updatedList = currentList.filter(u => (typeof u === 'string' ? u : u.userId) !== userId);
     handleInputChange('moderation.whitelistedUsers', updatedList);
+  };
+
+  const handleToggleModRole = (role) => {
+    if (!settings || !settings.moderation) return;
+    const currentList = settings.moderation.whitelistedRoles || [];
+    const isPresent = currentList.some(r => (typeof r === 'string' ? r : r.roleId) === role.id);
+    let updated;
+    if (isPresent) {
+      updated = currentList.filter(r => (typeof r === 'string' ? r : r.roleId) !== role.id);
+    } else {
+      updated = [...currentList, { roleId: role.id, name: role.name, color: role.color ? `#${role.color.toString(16).padStart(6, '0')}` : '#ffffff' }];
+    }
+    handleInputChange('moderation.whitelistedRoles', updated);
+  };
+
+  const handleSelectAllModRoles = () => {
+    if (!settings || !settings.moderation) return;
+    const allFilteredRoles = roles.filter(r => r.name !== '@everyone').map(r => ({
+      roleId: r.id,
+      name: r.name,
+      color: r.color ? `#${r.color.toString(16).padStart(6, '0')}` : '#ffffff'
+    }));
+    handleInputChange('moderation.whitelistedRoles', allFilteredRoles);
+  };
+
+  const handleClearAllModRoles = () => {
+    if (!settings || !settings.moderation) return;
+    handleInputChange('moderation.whitelistedRoles', []);
+  };
+
+  const handleToggleModChannel = (channelId) => {
+    if (!settings || !settings.moderation) return;
+    const currentList = settings.moderation.whitelistedChannels || [];
+    let updated;
+    if (currentList.includes(channelId)) {
+      updated = currentList.filter(id => id !== channelId);
+    } else {
+      updated = [...currentList, channelId];
+    }
+    handleInputChange('moderation.whitelistedChannels', updated);
+  };
+
+  const handleSelectAllModChannels = () => {
+    if (!settings || !settings.moderation) return;
+    const allTextChannels = channels.map(c => c.id);
+    handleInputChange('moderation.whitelistedChannels', allTextChannels);
+  };
+
+  const handleClearAllModChannels = () => {
+    if (!settings || !settings.moderation) return;
+    handleInputChange('moderation.whitelistedChannels', []);
   };
 
   const handleManualAddModWhitelist = async () => {
@@ -2811,7 +2882,7 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
       setModWhitelistSearchedMembers([]);
     } else {
       if (modWhitelistSearchedMembers.length > 0) {
-        const firstMatch = modWhitelistSearchedMembers.find(m => !(settings.moderation.whitelistedUsers || []).some(u => u.userId === m.id));
+        const firstMatch = modWhitelistSearchedMembers.find(m => !(settings.moderation.whitelistedUsers || []).some(u => (typeof u === 'string' ? u : u.userId) === m.id));
         if (firstMatch) {
           handleAddModWhitelist(firstMatch.id, firstMatch);
           setModWhitelistSearchQuery('');
@@ -4351,6 +4422,544 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                     </button>
                   </div>
 
+                  {/* MASTER FULL WHITELIST PANEL FOR MODERATION */}
+                  <div className="glass-panel" style={{
+                    padding: '24px',
+                    marginBottom: '24px',
+                    backgroundColor: 'rgba(255,255,255,0.01)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '14px',
+                    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.25)',
+                    position: 'relative'
+                  }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{
+                          width: '46px',
+                          height: '46px',
+                          borderRadius: '12px',
+                          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(6, 182, 212, 0.15))',
+                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#34d399',
+                          boxShadow: '0 4px 15px rgba(16, 185, 129, 0.2)'
+                        }}>
+                          <ShieldCheck size={26} />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#ffffff', margin: 0 }}>
+                              Moderation Full Whitelist
+                            </h3>
+                            <span style={{
+                              fontSize: '0.68rem',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              fontWeight: '700',
+                              background: 'rgba(16, 185, 129, 0.18)',
+                              color: '#34d399',
+                              border: '1px solid rgba(16, 185, 129, 0.35)',
+                              letterSpacing: '0.5px'
+                            }}>
+                              MASTER IMMUNITY
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                            Trusted members, roles, or channels added here bypass ALL moderation filters (Spam messages, forbidden links, photo spam, and automod word filter).
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{
+                          fontSize: '0.8rem',
+                          fontWeight: '600',
+                          color: (settings.moderation?.fullWhitelist?.enabled !== false) ? '#34d399' : 'var(--text-muted)'
+                        }}>
+                          {(settings.moderation?.fullWhitelist?.enabled !== false) ? 'Whitelist Active' : 'Whitelist Disabled'}
+                        </span>
+                        <label className="switch">
+                          <input
+                            type="checkbox"
+                            checked={settings.moderation?.fullWhitelist?.enabled !== false}
+                            onChange={() => handleToggle('moderation.fullWhitelist.enabled')}
+                          />
+                          <span className="slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Subtab Navigation Pills */}
+                    <div style={{
+                      display: 'flex',
+                      gap: '10px',
+                      marginTop: '20px',
+                      borderBottom: '1px solid var(--border-color)',
+                      paddingBottom: '14px',
+                      flexWrap: 'wrap'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => setModWhitelistActiveSubtab('users')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          fontSize: '0.85rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          background: modWhitelistActiveSubtab === 'users' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                          color: modWhitelistActiveSubtab === 'users' ? '#34d399' : 'var(--text-secondary)',
+                          border: modWhitelistActiveSubtab === 'users' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid transparent'
+                        }}
+                      >
+                        <UserCheck size={16} />
+                        Whitelisted Members ({(settings.moderation?.whitelistedUsers || []).length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setModWhitelistActiveSubtab('roles')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          fontSize: '0.85rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          background: modWhitelistActiveSubtab === 'roles' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                          color: modWhitelistActiveSubtab === 'roles' ? '#34d399' : 'var(--text-secondary)',
+                          border: modWhitelistActiveSubtab === 'roles' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid transparent'
+                        }}
+                      >
+                        <Award size={16} />
+                        Whitelisted Roles ({(settings.moderation?.whitelistedRoles || []).length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setModWhitelistActiveSubtab('channels')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          fontSize: '0.85rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          background: modWhitelistActiveSubtab === 'channels' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                          color: modWhitelistActiveSubtab === 'channels' ? '#34d399' : 'var(--text-secondary)',
+                          border: modWhitelistActiveSubtab === 'channels' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid transparent'
+                        }}
+                      >
+                        <Hash size={16} />
+                        Whitelisted Channels ({(settings.moderation?.whitelistedChannels || []).length})
+                      </button>
+                    </div>
+
+                    {/* Subtab 1: MEMBERS */}
+                    {modWhitelistActiveSubtab === 'users' && (
+                      <div style={{ marginTop: '20px' }}>
+                        <div style={{ position: 'relative', zIndex: 20, marginBottom: '20px' }}>
+                          <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                            Search Member or Enter Discord User ID:
+                          </label>
+
+                          <div style={{ display: 'flex', gap: '10px' }}>
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <input
+                                type="text"
+                                placeholder="Type username or 17-20 digit user ID to whitelist..."
+                                value={modWhitelistSearchQuery}
+                                onChange={(e) => setModWhitelistSearchQuery(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleManualAddModWhitelist();
+                                  }
+                                }}
+                                className="glass-input"
+                                style={{ width: '100%', padding: '12px' }}
+                              />
+                              {modWhitelistSearchLoading && (
+                                <div style={{ position: 'absolute', right: '15px', top: '12px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Searching...</div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleManualAddModWhitelist}
+                              className="btn-primary"
+                              style={{
+                                padding: '0 24px',
+                                height: '46px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: 'linear-gradient(135deg, #10b981, #059669)',
+                                border: 'none',
+                                fontWeight: '600'
+                              }}
+                            >
+                              Add to Whitelist
+                            </button>
+                          </div>
+
+                          {/* Member Search Results Dropdown */}
+                          {modWhitelistSearchedMembers.length > 0 && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: 0,
+                                right: 0,
+                                top: '100%',
+                                background: 'rgba(25, 25, 35, 0.98)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '8px',
+                                marginTop: '5px',
+                                maxHeight: '220px',
+                                overflowY: 'auto',
+                                boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                                backdropFilter: 'blur(10px)',
+                                zIndex: 1000
+                              }}
+                            >
+                              {modWhitelistSearchedMembers
+                                .filter(m => !(settings.moderation?.whitelistedUsers || []).some(u => (typeof u === 'string' ? u : u.userId) === m.id))
+                                .map(m => (
+                                  <div
+                                    key={m.id}
+                                    onClick={() => { handleAddModWhitelist(m.id, m); setModWhitelistSearchQuery(''); }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '12px',
+                                      padding: '10px 14px',
+                                      cursor: 'pointer',
+                                      borderBottom: '1px solid rgba(255,255,255,0.05)'
+                                    }}
+                                    className="search-item"
+                                  >
+                                    <img
+                                      src={m.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}
+                                      style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                                      alt=""
+                                    />
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                      <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>{m.displayName}</span>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{m.username} • {m.id}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Whitelisted Users Display List */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <h4 style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-secondary)', margin: 0 }}>
+                              Whitelisted Members ({(settings.moderation?.whitelistedUsers || []).length}):
+                            </h4>
+                            {(settings.moderation?.whitelistedUsers || []).length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm('Are you sure you want to remove all whitelisted members?')) {
+                                    handleInputChange('moderation.whitelistedUsers', []);
+                                  }
+                                }}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#f87171',
+                                  cursor: 'pointer',
+                                  fontSize: '0.78rem',
+                                  fontWeight: '600'
+                                }}
+                              >
+                                Clear All Members
+                              </button>
+                            )}
+                          </div>
+
+                          {(settings.moderation?.whitelistedUsers || []).length === 0 ? (
+                            <div style={{
+                              padding: '24px',
+                              textAlign: 'center',
+                              borderRadius: '8px',
+                              background: 'rgba(255,255,255,0.02)',
+                              border: '1px dashed rgba(255,255,255,0.1)'
+                            }}>
+                              <UserCheck size={28} style={{ color: 'var(--text-muted)', marginBottom: '8px', opacity: 0.6 }} />
+                              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+                                No whitelisted members yet. Only the Server Owner bypasses moderation by default. Add trusted staff or members above.
+                              </p>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '10px' }}>
+                              {(settings.moderation.whitelistedUsers || []).map(entry => {
+                                const entryId = typeof entry === 'string' ? entry : entry.userId;
+                                const details = getMemberDetails(entryId);
+                                const displayName = details.displayName || (typeof entry === 'object' ? entry.displayName : '') || entryId;
+                                const username = details.username || (typeof entry === 'object' ? entry.username : '');
+                                const avatar = details.avatar || (typeof entry === 'object' ? entry.avatar : '');
+                                const addedBy = (typeof entry === 'object' && entry.addedBy) ? entry.addedBy : 'Admin';
+
+                                return (
+                                  <div
+                                    key={entryId}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      padding: '12px 14px',
+                                      borderRadius: '10px',
+                                      background: 'rgba(255,255,255,0.03)',
+                                      border: '1px solid rgba(255,255,255,0.07)',
+                                      gap: '10px'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, overflow: 'hidden' }}>
+                                      <img
+                                        src={avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}
+                                        style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                                        alt=""
+                                      />
+                                      <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                                        <div style={{ fontSize: '0.88rem', color: '#ffffff', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {displayName}
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {username ? `@${username} • ` : ''}ID: {entryId}
+                                        </div>
+                                        <div style={{ fontSize: '0.68rem', color: '#34d399', marginTop: '2px' }}>
+                                          Added by: {addedBy}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveModWhitelist(entryId)}
+                                      className="btn-danger"
+                                      style={{
+                                        border: 'none',
+                                        background: 'rgba(239, 68, 68, 0.12)',
+                                        color: '#f87171',
+                                        cursor: 'pointer',
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: '600',
+                                        flexShrink: 0
+                                      }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subtab 2: ROLES */}
+                    {modWhitelistActiveSubtab === 'roles' && (
+                      <div style={{ marginTop: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                          <div>
+                            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: 0 }}>
+                              Members who possess any checked role will be completely exempt from all moderation rules.
+                            </p>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={handleSelectAllModRoles}
+                              className="btn-secondary"
+                              style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                            >
+                              Select All
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleClearAllModRoles}
+                              className="btn-secondary"
+                              style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                            >
+                              Deselect All
+                            </button>
+                          </div>
+                        </div>
+
+                        <input
+                          type="text"
+                          placeholder="Filter roles by name..."
+                          value={modRoleSearchQuery}
+                          onChange={(e) => setModRoleSearchQuery(e.target.value)}
+                          className="glass-input"
+                          style={{ width: '100%', marginBottom: '12px', fontSize: '0.85rem' }}
+                        />
+
+                        <div style={{
+                          maxHeight: '260px',
+                          overflowY: 'auto',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          backgroundColor: 'rgba(0,0,0,0.25)',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                          gap: '8px'
+                        }}>
+                          {roles
+                            .filter(r => r.name !== '@everyone')
+                            .filter(r => !modRoleSearchQuery || r.name.toLowerCase().includes(modRoleSearchQuery.toLowerCase()))
+                            .map(r => {
+                              const isChecked = (settings.moderation?.whitelistedRoles || []).some(item =>
+                                (typeof item === 'string' ? item : item.roleId) === r.id
+                              );
+                              return (
+                                <label
+                                  key={r.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    background: isChecked ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255,255,255,0.02)',
+                                    border: isChecked ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid transparent',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => handleToggleModRole(r)}
+                                    style={{ accentColor: '#10b981' }}
+                                  />
+                                  <div style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '50%',
+                                    backgroundColor: r.color && r.color !== '#000000' && r.color !== 0 ? (typeof r.color === 'number' ? `#${r.color.toString(16).padStart(6, '0')}` : r.color) : '#94a3b8'
+                                  }}></div>
+                                  <span style={{
+                                    fontSize: '0.88rem',
+                                    fontWeight: '500',
+                                    color: r.color && r.color !== '#000000' && r.color !== 0 ? (typeof r.color === 'number' ? `#${r.color.toString(16).padStart(6, '0')}` : r.color) : '#ffffff',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    @{r.name}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subtab 3: CHANNELS */}
+                    {modWhitelistActiveSubtab === 'channels' && (
+                      <div style={{ marginTop: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                          <div>
+                            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: 0 }}>
+                              Messages posted in these channels are completely exempt from spam blockers, link guards, photo spam, and word filters.
+                            </p>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={handleSelectAllModChannels}
+                              className="btn-secondary"
+                              style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                            >
+                              Select All
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleClearAllModChannels}
+                              className="btn-secondary"
+                              style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                            >
+                              Deselect All
+                            </button>
+                          </div>
+                        </div>
+
+                        <input
+                          type="text"
+                          placeholder="Filter channels by name..."
+                          value={modChannelSearchQuery}
+                          onChange={(e) => setModChannelSearchQuery(e.target.value)}
+                          className="glass-input"
+                          style={{ width: '100%', marginBottom: '12px', fontSize: '0.85rem' }}
+                        />
+
+                        <div style={{
+                          maxHeight: '260px',
+                          overflowY: 'auto',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          backgroundColor: 'rgba(0,0,0,0.25)',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                          gap: '8px'
+                        }}>
+                          {channels
+                            .filter(ch => !modChannelSearchQuery || ch.name.toLowerCase().includes(modChannelSearchQuery.toLowerCase()))
+                            .map(ch => {
+                              const isChecked = (settings.moderation?.whitelistedChannels || []).includes(ch.id);
+                              return (
+                                <label
+                                  key={ch.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    background: isChecked ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255,255,255,0.02)',
+                                    border: isChecked ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid transparent',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => handleToggleModChannel(ch.id)}
+                                    style={{ accentColor: '#10b981' }}
+                                  />
+                                  <span style={{ fontSize: '0.88rem', fontWeight: '500', color: isChecked ? '#34d399' : '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    #{ch.name}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Section 1: Spam Protection */}
                   <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px', backgroundColor: 'rgba(255,255,255,0.01)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -4598,158 +5207,53 @@ export default function Dashboard({ guildId, guildName, guildIcon, memberCount, 
                           </div>
                         </div>
 
-                        {/* Spam Protection Whitelist */}
-                        <div style={{ marginTop: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-                          <h4 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '4px', color: '#ffffff' }}>Spam Protection Whitelist</h4>
-                          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                            Whitelisted users bypass all spam protection modules (Photo Spam, Message Spam, Link Spam, etc.).
-                          </p>
-
-                          <div style={{ position: 'relative', zIndex: 10, marginBottom: '20px' }}>
-                            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                              Search and Add Member to Whitelist
-                            </label>
-
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                              <div style={{ position: 'relative', flex: 1 }}>
-                                <input
-                                  type="text"
-                                  placeholder="Type username or member ID to search..."
-                                  value={modWhitelistSearchQuery}
-                                  onChange={(e) => setModWhitelistSearchQuery(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleManualAddModWhitelist();
-                                    }
-                                  }}
-                                  className="glass-input"
-                                  style={{ width: '100%', padding: '12px' }}
-                                />
-                                {modWhitelistSearchLoading && (
-                                  <div style={{ position: 'absolute', right: '15px', top: '12px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Searching...</div>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={handleManualAddModWhitelist}
-                                className="btn-primary"
-                                style={{ padding: '0 24px', height: '46px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                              >
-                                Add
-                              </button>
+                        {/* Photo Spam Whitelist Notice */}
+                        <div style={{
+                          marginTop: '16px',
+                          padding: '14px 18px',
+                          borderRadius: '10px',
+                          background: 'rgba(16, 185, 129, 0.08)',
+                          border: '1px solid rgba(16, 185, 129, 0.25)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '8px',
+                              background: 'rgba(16, 185, 129, 0.2)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#34d399'
+                            }}>
+                              <ShieldCheck size={18} />
                             </div>
-
-                            {modWhitelistSearchedMembers.length > 0 && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: 0,
-                                  right: 0,
-                                  top: '100%',
-                                  background: 'rgba(25, 25, 35, 0.98)',
-                                  border: '1px solid var(--border-color)',
-                                  borderRadius: '8px',
-                                  marginTop: '5px',
-                                  maxHeight: '200px',
-                                  overflowY: 'auto',
-                                  boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                                  backdropFilter: 'blur(10px)',
-                                  zIndex: 1000
-                                }}
-                              >
-                                {modWhitelistSearchedMembers
-                                  .filter(m => !(settings.moderation?.whitelistedUsers || []).some(u => u.userId === m.id))
-                                  .map(m => (
-                                    <div
-                                      key={m.id}
-                                      onClick={() => { handleAddModWhitelist(m.id, m); setModWhitelistSearchQuery(''); }}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '12px',
-                                        padding: '10px 14px',
-                                        cursor: 'pointer',
-                                        borderBottom: '1px solid rgba(255,255,255,0.05)'
-                                      }}
-                                      className="search-item"
-                                    >
-                                      <img
-                                        src={m.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}
-                                        style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
-                                      />
-                                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                        <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>{m.displayName}</span>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{m.username} • {m.id}</span>
-                                      </div>
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
+                            <div>
+                              <span style={{ fontSize: '0.88rem', fontWeight: '600', color: '#ffffff', display: 'block' }}>
+                                Moderation Full Whitelist Active
+                              </span>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                Members, roles, and channels in the Full Whitelist section above are automatically exempt from Photo Spam.
+                              </span>
+                            </div>
                           </div>
-
-                          <div style={{ marginTop: '16px' }}>
-                            <h4 style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                              Whitelisted Users:
-                            </h4>
-                            {(settings.moderation?.whitelistedUsers || []).length === 0 ? (
-                              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                No whitelisted users. All members, including Server Owner and Administrators, will be subject to spam protection.
-                              </p>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {(settings.moderation.whitelistedUsers || []).map(entry => {
-                                  const details = getMemberDetails(entry.userId);
-                                  return (
-                                    <div
-                                      key={entry.userId}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '10px 16px',
-                                        borderRadius: '8px',
-                                        background: 'rgba(255,255,255,0.03)',
-                                        border: '1px solid var(--border-color)'
-                                      }}
-                                    >
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <img
-                                          src={details.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}
-                                          style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
-                                        />
-                                        <div>
-                                          <div style={{ fontSize: '0.85rem', color: '#ffffff', fontWeight: '600' }}>
-                                            {details.displayName} {details.username && details.username !== entry.userId && `(@${details.username})`} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(ID: {entry.userId})</span>
-                                          </div>
-                                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                            Added by: {entry.addedBy || 'Unknown'}
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveModWhitelist(entry.userId)}
-                                        className="btn-danger"
-                                        style={{
-                                          border: 'none',
-                                          background: 'rgba(239, 68, 68, 0.1)',
-                                          color: 'var(--danger)',
-                                          cursor: 'pointer',
-                                          padding: '6px 12px',
-                                          borderRadius: '4px',
-                                          fontSize: '0.8rem',
-                                          fontWeight: 'bold',
-                                          transition: 'all 0.2s ease'
-                                        }}
-                                      >
-                                        Remove
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{
+                              fontSize: '0.78rem',
+                              padding: '3px 10px',
+                              borderRadius: '6px',
+                              background: 'rgba(16, 185, 129, 0.15)',
+                              color: '#34d399',
+                              fontWeight: '600',
+                              border: '1px solid rgba(16, 185, 129, 0.3)'
+                            }}>
+                              {(settings.moderation?.whitelistedUsers || []).length} Users • {(settings.moderation?.whitelistedRoles || []).length} Roles • {(settings.moderation?.whitelistedChannels || []).length} Channels
+                            </span>
                           </div>
                         </div>
                       </div>
